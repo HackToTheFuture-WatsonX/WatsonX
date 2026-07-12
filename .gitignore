@@ -30,3 +30,14 @@ desktop.ini
 .vscode/
 *.swp
 *.swo
+
+# -- Local credentials backup - never push this --
+MY_CREDENTIALS_BACKUP.txt
+TRACKING_DB_BACKUP.txt
+
+# -- Runtime / generated files - never push these --
+extractor.log
+*.log
+tracking_db.json
+*.bak
+*.bak2

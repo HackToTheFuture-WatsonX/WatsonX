@@ -1,0 +1,53 @@
+﻿{
+  "_comment": "PDF Text Extractor V2 - Configuration File",
+  "_note": "Box API credentials are required to connect to Box Online. See README.md for setup instructions.",
+
+  "pdf_password": "ODC2026",
+
+  "box": {
+    "_help": "Create a Box App at https://app.box.com/developers/console to get these values.",
+    "client_id":        "YOUR_BOX_CLIENT_ID",
+    "client_secret":    "YOUR_BOX_CLIENT_SECRET",
+    "access_token":     "YOUR_BOX_DEVELOPER_TOKEN",
+    "folder_id":        "398448580241",
+    "archive_folder_id":"398464621507",
+    "output_folder_id": "398794370345",
+    "_folder_id_note": "folder_id = source Box folder to sync FROM. output_folder_id = Box folder to upload Extracted files TO.",
+    "jwt_config_file":  "box_jwt_config.json"
+  },
+
+  "local": {
+    "local_folder": "Local Folder",
+    "_local_folder_note": "Path (relative to this config) where Box files are synced to locally.",
+    "extracted_folder": "Local Folder/Extracted",
+    "_extracted_folder_note": "Sub-folder where all extracted output files are saved locally before being synced to Box output_folder_id."
+  },
+
+  "sync": {
+    "auto_sync_enabled": false,
+    "auto_sync_interval_minutes": 30,
+    "_auto_sync_note": "Set auto_sync_enabled=true to sync Box folder automatically at startup and every interval_minutes."
+  },
+
+  "watsonx": {
+    "_help": "IBM WatsonX.AI credentials - get these from cloud.ibm.com > Manage > Access (IAM) > API Keys and your WatsonX project.",
+    "api_key":    "YOUR_WATSONX_API_KEY",
+    "project_id": "YOUR_WATSONX_PROJECT_ID",
+    "url":        "https://eu-de.ml.cloud.ibm.com",
+    "model_id":   "ibm/granite-3-8b-instruct",
+    "_model_note": "Other options: meta-llama/llama-3-1-8b-instruct, ibm/granite-13b-chat-v2"
+  },
+
+  "groq": {
+    "_help": "Groq API - free at console.groq.com. Runs Llama 3.3 70B instantly. Fallback when watsonx is not configured.",
+    "api_key":  "YOUR_GROQ_API_KEY",
+    "model":    "llama-3.3-70b-versatile"
+  },
+
+  "settings": {
+    "search_subfolders": true,
+    "file_extension": ".pdf",
+    "overwrite_existing_exports": false,
+    "log_activity": true
+  }
+}
