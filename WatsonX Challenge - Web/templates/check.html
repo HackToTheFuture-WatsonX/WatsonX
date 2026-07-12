@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% set active = "check" %}
+{% block title %}Check Box Folder{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Check Box Folder</h1>
+  <button class="btn btn-primary" id="scanBtn" onclick="doScan()">🔄&nbsp; Scan Box Folder</button>
+</div>
+
+<div class="summary-bar" id="summaryBar">
+  Total: {{ total }}&nbsp;&nbsp;|&nbsp;&nbsp;✅ Completed: {{ completed }}&nbsp;&nbsp;|&nbsp;&nbsp;🕐 Pending: {{ pending }}
+</div>
+<div class="status-bar" id="statusBar"></div>
+
+<div class="table-wrapper">
+  {% if rows %}
+  <table class="data-table" id="fileTable">
+    <thead>
+      <tr>
+        <th>File Name</th>
+        <th>Box File ID</th>
+        <th>Status</th>
+        <th>Last Extracted</th>
+        <th>Reference No.</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      {% for row in rows %}
+      <tr class="row-pending">
+        <td>{{ row.name }}</td>
+        <td class="muted">{{ row.id }}</td>
+        <td><span class="badge badge-pending">{{ row.status }}</span></td>
+        <td class="muted">{{ row.last_extracted }}</td>
+        <td>{{ row.ref_number }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state" id="emptyState">No File(s) available on the folder</div>
+  {% endif %}
+</div>
+
+<script>
+async function doScan() {
+  const btn = document.getElementById('scanBtn');
+  const bar = document.getElementById('statusBar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning…';
+  bar.textContent = 'Scanning Box folder…';
+  bar.className   = 'status-bar status-info';
+
+  try {
+    const r    = await fetch('/api/scan', { method: 'POST' });
+    const data = await r.json();
+    bar.textContent = data.message;
+    bar.className   = 'status-bar status-ok';
+    document.getElementById('summaryBar').textContent =
+      `Total: ${data.total}  |  ✅ Completed: ${data.completed}  |  🕐 Pending: ${data.pending}`;
+    // Reload table
+    const sr   = await fetch('/api/status');
+    const sdat = await sr.json();
+    const tbody = document.getElementById('tableBody');
+    const empty = document.getElementById('emptyState');
+    if (sdat.rows.length === 0) {
+      if (tbody) tbody.closest('table').style.display = 'none';
+      if (empty) empty.style.display = 'flex';
+    } else {
+      if (empty) empty.style.display = 'none';
+      if (tbody) {
+        tbody.innerHTML = sdat.rows.map(row => `
+          <tr class="row-pending">
+            <td>${row.name}</td>
+            <td class="muted">${row.id}</td>
+            <td><span class="badge badge-pending">${row.status}</span></td>
+            <td class="muted">${row.last_extracted}</td>
+            <td>${row.ref_number}</td>
+          </tr>`).join('');
+        tbody.closest('table').style.display = '';
+      }
+    }
+  } catch(e) {
+    bar.textContent = '⚠ Scan failed: ' + e;
+    bar.className   = 'status-bar status-error';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '🔄 Scan Box Folder';
+  }
+}
+</script>
+{% endblock %}

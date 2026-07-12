@@ -1,0 +1,38 @@
+{
+  "_comment": "PDF Text Extractor - Configuration File",
+  "_note": "Box API credentials are required to connect to Box Online. See README.md for setup instructions.",
+
+  "pdf_password": "ODC2026",
+
+  "box": {
+    "_help": "Create a Box App at https://app.box.com/developers/console to get these values.",
+    "client_id":        "YOUR_BOX_CLIENT_ID",
+    "client_secret":    "YOUR_BOX_CLIENT_SECRET",
+    "access_token":     "YOUR_BOX_DEVELOPER_TOKEN",
+    "folder_id":        "398448580241",
+    "archive_folder_id":"398464621507",
+    "_folder_id_note": "Use '0' for your root Box folder, or paste the numeric ID from the Box folder URL."
+  },
+
+  "watsonx": {
+    "_help": "IBM WatsonX.AI credentials — get these from cloud.ibm.com > Manage > Access (IAM) > API Keys and your WatsonX project.",
+    "api_key":    "YOUR_WATSONX_API_KEY",
+    "project_id": "YOUR_WATSONX_PROJECT_ID",
+    "url":        "https://eu-de.ml.cloud.ibm.com",
+    "model_id":   "ibm/granite-3-8b-instruct",
+    "_model_note": "Other options: meta-llama/llama-3-1-8b-instruct, ibm/granite-13b-chat-v2"
+  },
+
+  "groq": {
+    "_help": "Groq API — free at console.groq.com. Runs Llama 3.3 70B instantly. Fallback when watsonx is not configured.",
+    "api_key":  "YOUR_GROQ_API_KEY",
+    "model":    "llama-3.3-70b-versatile"
+  },
+
+  "settings": {
+    "search_subfolders": true,
+    "file_extension": ".pdf",
+    "overwrite_existing_exports": false,
+    "log_activity": true
+  }
+}

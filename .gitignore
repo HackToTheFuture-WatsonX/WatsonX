@@ -1,0 +1,52 @@
+# -- Python --------------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+*.egg
+
+# -- Sensitive credentials — NEVER commit these --------------------------------
+# Box JWT private key file (contains an encrypted RSA private key + passphrase)
+box_jwt_config.json
+
+# If you want to commit a config.json template, rename real one to config.local.json
+# config.local.json
+
+# -- Generated output folders --------------------------------------------------
+PDF Extractor/Word Extracts/
+PDF Extractor/CSV Extracts/
+PDF Extractor/JSON File Extracts/
+PDF Extractor/Log History/
+
+WatsonX Challenge - Web/Word Extracts/
+WatsonX Challenge - Web/CSV Extracts/
+WatsonX Challenge - Web/JSON File Extracts/
+WatsonX Challenge - Web/Log History/
+
+# -- App state / runtime files -------------------------------------------------
+tracking_db.json
+extractor.log
+*.log
+
+# -- PyInstaller build artifacts -----------------------------------------------
+*.spec
+build/
+*.exe
+.bob/
+
+# -- OS / editor files ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo

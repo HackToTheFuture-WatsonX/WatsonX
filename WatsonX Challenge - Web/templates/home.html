@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Home — Background Check Automation{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <p class="page-subtitle">Background Check Report Automation</p>
+  <hr class="hero-divider" />
+</div>
+
+<!-- Feature cards -->
+<div class="cards-row">
+  <a href="/check" class="feature-card">
+    <span class="card-icon">📂</span>
+    <span class="card-title">Check Box Folder</span>
+    <span class="card-desc">Scan your Box folder for PDF files and see their extraction status.</span>
+  </a>
+  <a href="/extract" class="feature-card">
+    <span class="card-icon">⚙️</span>
+    <span class="card-title">Extract Files</span>
+    <span class="card-desc">Run the extraction pipeline and archive processed PDF files.</span>
+  </a>
+  <a href="/insights" class="feature-card">
+    <span class="card-icon">📊</span>
+    <span class="card-title">Insights</span>
+    <span class="card-desc">View charts and statistics on extraction progress over time.</span>
+  </a>
+</div>
+{% endblock %}

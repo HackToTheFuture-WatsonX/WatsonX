@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% set active = "insights" %}
+{% block title %}Insights{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Extraction Insights</h1>
+  <div class="filter-group">
+    <label>Period:</label>
+    <select id="periodSel" onchange="loadChart()">
+      <option value="Day">Day</option>
+      <option value="Week">Week</option>
+      <option value="Month" selected>Month</option>
+      <option value="Year">Year</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="loadChart()">Refresh</button>
+  </div>
+</div>
+
+<!-- Summary stat cards (rebuilt by JS) -->
+<div class="stats-row" id="statCards">
+  <div class="stat-card stat-blue"><span class="stat-number" id="siTotal">–</span><span class="stat-label">Total Files</span></div>
+  <div class="stat-card stat-green"><span class="stat-number" id="siComp">–</span><span class="stat-label">✅ Completed</span></div>
+  <div class="stat-card stat-amber"><span class="stat-number" id="siPend">–</span><span class="stat-label">🕐 Pending</span></div>
+</div>
+
+<!-- Chart area -->
+<div class="chart-container">
+  <canvas id="insightsChart"></canvas>
+  <div class="chart-empty" id="chartEmpty" style="display:none">No data — scan Box folder first.</div>
+</div>
+
+<!-- Chart.js from CDN (inline reference is fine for localhost) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let chartInstance = null;
+
+async function loadChart() {
+  const period = document.getElementById('periodSel').value;
+  const r      = await fetch(`/api/insights?period=${period}`);
+  const data   = await r.json();
+
+  document.getElementById('siTotal').textContent = data.total;
+  document.getElementById('siComp').textContent  = data.total_completed;
+  document.getElementById('siPend').textContent  = data.total_pending;
+
+  const empty = document.getElementById('chartEmpty');
+  const canvas = document.getElementById('insightsChart');
+
+  if (!data.labels || data.labels.length === 0) {
+    canvas.style.display = 'none';
+    empty.style.display  = 'flex';
+    return;
+  }
+  canvas.style.display = '';
+  empty.style.display  = 'none';
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: data.labels,
+      datasets: [
+        {
+          label: 'Completed',
+          data: data.completed,
+          backgroundColor: '#22863A',
+          borderRadius: 4,
+        },
+        {
+          label: 'Pending',
+          data: data.pending,
+          backgroundColor: '#E6A817',
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+      },
+    },
+  });
+}
+
+// Load on page open
+loadChart();
+</script>
+{% endblock %}

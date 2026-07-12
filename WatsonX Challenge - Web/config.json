@@ -1,0 +1,59 @@
+{
+  "_comment": "Background Check Report Automation — Web App Configuration",
+
+  "pdf_password": "ODC2026",
+
+  "box": {
+    "_help": "JWT auth — permanent, never expires. jwt_config_file points to the Box-generated JSON.",
+    "jwt_config_file":    "box_jwt_config.json",
+    "folder_id":          "398448580241",
+    "archive_folder_id":  "398464621507",
+    "output_folder_id":   "398794370345"
+  },
+
+  "watsonx": {
+    "_help": "IBM watsonx.ai — serves IBM Granite models via OpenAI-compatible REST API.",
+    "_step1": "Sign in to https://cloud.ibm.com → Manage → Access (IAM) → API Keys → Create",
+    "_step2": "Open your watsonx.ai project → copy the Project ID from Manage → General",
+    "_step3": "Your instance is eu-de → service URL is https://eu-de.ml.cloud.ibm.com",
+    "api_key":     "YOUR_WATSONX_API_KEY",
+    "project_id":  "YOUR_WATSONX_PROJECT_ID",
+    "service_url": "https://eu-de.ml.cloud.ibm.com",
+    "model":       "ibm/granite-3-8b-instruct"
+  },
+
+  "groq": {
+    "_help": "Groq API — free at console.groq.com. Runs Llama 3.3 70B instantly. Used as fallback if watsonx is not configured.",
+    "api_key":  "YOUR_GROQ_API_KEY",
+    "model":    "llama-3.3-70b-versatile"
+  },
+
+  "orchestrate": {
+    "_help": "IBM watsonx Orchestrate credentials — see README.md for full setup steps.",
+    "_step1": "Sign in to https://cloud.ibm.com → Manage → Access (IAM) → API Keys → Create",
+    "_step2": "Open your Orchestrate instance → copy the instance URL from the browser address bar",
+    "_step3": "In Orchestrate, create an Agent and copy its Agent ID from the URL or settings",
+    "api_key":      "YOUR_IBM_CLOUD_API_KEY",
+    "instance_url": "YOUR_ORCHESTRATE_INSTANCE_URL",
+    "agent_id":     "YOUR_ORCHESTRATE_AGENT_ID",
+    "_model_note":  "The model is configured inside Orchestrate — default is ibm/granite-13b-chat-v2"
+  },
+
+  "watson_assistant": {
+    "_help": "IBM Watson Assistant credentials — https://cloud.ibm.com/catalog/services/watson-assistant",
+    "_step1": "Create a Watson Assistant instance on IBM Cloud (Lite tier is free)",
+    "_step2": "Open the instance → Manage → copy the API Key and Service URL",
+    "_step3": "Inside Watson Assistant, create an Assistant and copy its Assistant ID from Settings → API Details",
+    "api_key":      "YOUR_WATSON_ASSISTANT_API_KEY",
+    "service_url":  "YOUR_WATSON_ASSISTANT_SERVICE_URL",
+    "assistant_id": "YOUR_WATSON_ASSISTANT_ASSISTANT_ID",
+    "api_version":  "2023-06-15"
+  },
+
+  "settings": {
+    "search_subfolders":         true,
+    "file_extension":            ".pdf",
+    "overwrite_existing_exports": false,
+    "log_activity":              true
+  }
+}

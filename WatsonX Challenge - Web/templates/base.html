@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Background Check Automation{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Background Check<br>Report Automation</span>
+    </div>
+    <hr class="sidebar-divider" />
+    <a href="/"        class="nav-item {% if active=='home'     %}active{% endif %}">🏠&nbsp; Home</a>
+    <a href="/check"   class="nav-item {% if active=='check'    %}active{% endif %}">📂&nbsp; Check Box</a>
+    <a href="/extract" class="nav-item {% if active=='extract'  %}active{% endif %}">⚙️&nbsp; Extract Files</a>
+    <a href="/insights" class="nav-item {% if active=='insights' %}active{% endif %}">📊&nbsp; Insights</a>
+    <a href="/chat"    class="nav-item {% if active=='chat'     %}active{% endif %}">🤖&nbsp; AI Assistant</a>
+    <div class="sidebar-version">v1.0.0</div>
+  </nav>
+
+  <!-- ── Main content ─────────────────────────────────────────────────── -->
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ── Chat FAB — direct link to /chat, no pop-up ────────────────────── -->
+  {% if active != 'chat' %}
+  <a href="/chat" class="wxo-fab" title="Chat with Detective Conan">
+    <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 6a2 2 0 0 1 2-2h20a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H10l-6 4V6z" fill="#fff"/>
+      <circle cx="11" cy="13" r="2" fill="#2563EB"/>
+      <circle cx="16" cy="13" r="2" fill="#2563EB"/>
+      <circle cx="21" cy="13" r="2" fill="#2563EB"/>
+    </svg>
+  </a>
+  {% endif %}
+
+</body>
+</html>
