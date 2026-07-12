@@ -1,5 +1,5 @@
 """
-Background Check Report Automation â€” Desktop UI
+Background Check Report Automation — Desktop UI
 ================================================
 NOTE: To run without a console/terminal window, use Launch.vbs (double-click)
 instead of running python pdf_extractor_ui.py directly.
@@ -7,20 +7,20 @@ instead of running python pdf_extractor_ui.py directly.
 Tkinter-based interface for the PDF extraction pipeline.
 
 Screens (sidebar navigation):
-  ðŸ  Home          â€” landing page with shortcut cards to each feature
-  ðŸ“‚ Check Box     â€” lists PDF files found in the configured Box folder;
+  🏠 Home          — landing page with shortcut cards to each feature
+  📂 Check Box     — lists PDF files found in the configured Box folder;
                      only shows files with Pending status (Completed are hidden)
-  ðŸ“Š Insights      â€” bar chart of Completed vs Pending extractions,
+  📊 Insights      — bar chart of Completed vs Pending extractions,
                      filterable by Day / Week / Month / Year
-  âš™ï¸ Extract Files â€” runs the full extraction pipeline, moves processed PDFs
+  ⚙️ Extract Files — runs the full extraction pipeline, moves processed PDFs
                      to the Box Archive folder, writes per-file log files, and
                      shows a result card for each processed file
-  ðŸ’¬ AI Assistant  â€” WatsonX-powered chatbot that can answer questions about
+  💬 AI Assistant  — WatsonX-powered chatbot that can answer questions about
                      the extracted reports and trigger Scan / Extract actions
                      via natural language commands
 
 All network operations (Box API calls) run on background threads so the UI
-never freezes. UI updates from those threads are posted back via self.after(0, â€¦).
+never freezes. UI updates from those threads are posted back via self.after(0, …).
 
 Log files are written to:
   Log History / YYYY / MMM_YYYY / Week_NN / YYYY-MM-DD / <RefNo>_YYYYMMDD_HHMMSS.log
@@ -39,32 +39,32 @@ from collections import defaultdict
 import importlib.util                               # used to load the extractor module at runtime
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Module-level path constants
 # All paths are resolved relative to the directory containing this script.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).parent.resolve()   # directory of this script
 CONFIG_PATH     = BASE_DIR / "config.json"          # Box credentials + settings
 TRACKING_PATH   = BASE_DIR / "tracking_db.json"     # per-file extraction state DB
 LOG_HISTORY_DIR = BASE_DIR / "Log History"          # root of the per-file log tree
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Colour palette â€” keep all colours in one place for easy theming
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
+# Colour palette — keep all colours in one place for easy theming
+# ─────────────────────────────────────────────────────────────────────────────
 CLR_BG      = "#F0F4F8"   # main content area background
 CLR_SIDEBAR = "#1F3864"   # dark-navy sidebar background
-CLR_ACCENT  = "#2E75B6"   # medium blue â€” active nav, scan button
+CLR_ACCENT  = "#2E75B6"   # medium blue — active nav, scan button
 CLR_WHITE   = "#FFFFFF"   # card / widget backgrounds
 CLR_TEXT    = "#1F2328"   # primary text
 CLR_MUTED   = "#57606A"   # secondary / hint text
-CLR_GREEN   = "#22863A"   # success â€” Completed badge
-CLR_ORANGE  = "#D1622A"   # failure â€” error badge
-CLR_PENDING = "#E6A817"   # warning amber â€” Pending badge
+CLR_GREEN   = "#22863A"   # success — Completed badge
+CLR_ORANGE  = "#D1622A"   # failure — error badge
+CLR_PENDING = "#E6A817"   # warning amber — Pending badge
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Font definitions
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 FONT_TITLE = ("Segoe UI", 14, "bold")   # page heading
 FONT_LABEL = ("Segoe UI", 10)           # sidebar nav items, general labels
 FONT_BOLD  = ("Segoe UI", 10, "bold")   # field labels, card titles
@@ -72,11 +72,11 @@ FONT_SMALL = ("Segoe UI", 9)            # captions, status bars, badges
 FONT_MONO  = ("Consolas", 9)            # monospace (reserved for future log display)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Tracking database helpers
 # tracking_db.json holds a top-level "files" dict keyed by Box file ID.
 # Each value stores: name, status, last_extracted, ref_number, archived.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 def load_tracking() -> dict:
     """
     Read and return tracking_db.json as a dict.
@@ -100,13 +100,13 @@ def get_box_client():
     (client, cfg) so the caller can also access folder IDs from cfg.
 
     NOTE: Developer Tokens expire after 60 minutes. Refresh the token in
-    config.json â†’ box.access_token before running another extraction.
+    config.json → box.access_token before running another extraction.
     """
     from boxsdk import OAuth2, Client
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         cfg = json.load(f)
     box  = cfg["box"]
-    # OAuth2 with a pre-issued access_token â€” no automatic refresh
+    # OAuth2 with a pre-issued access_token — no automatic refresh
     auth = OAuth2(
         client_id=box["client_id"],
         client_secret=box["client_secret"],
@@ -115,10 +115,10 @@ def get_box_client():
     return Client(auth), cfg
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Folder hierarchy builder â€” used for extract output folders
+# ─────────────────────────────────────────────────────────────────────────────
+# Folder hierarchy builder — used for extract output folders
 # Mirrors the same structure used by the extractor's build_extract_folder().
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 def build_extract_folder(base_dir: Path, when: datetime) -> Path:
     """
     Build (and create) the correct daily output folder path:
@@ -135,18 +135,18 @@ def build_extract_folder(base_dir: Path, when: datetime) -> Path:
     return daily_folder
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Per-file extraction log writer
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 def write_extraction_log(ref_number: str, when: datetime, content: str) -> Path:
     """
     Write a plain-text extraction log to the Log History folder tree:
       Log History / YYYY / MMM_YYYY / Week_NN / YYYY-MM-DD / <RefNo>_YYYYMMDD_HHMMSS.log
 
-    ref_number â€” used as the filename prefix; illegal filename characters are
+    ref_number — used as the filename prefix; illegal filename characters are
                  replaced with underscores.
-    when       â€” the datetime of the extraction run (determines folder path).
-    content    â€” the full log text to write.
+    when       — the datetime of the extraction run (determines folder path).
+    content    — the full log text to write.
 
     Returns the Path of the written .log file.
     """
@@ -179,7 +179,7 @@ class PDFExtractorApp(tk.Tk):
     Main application window.
     Builds a fixed left sidebar for navigation and a right content area where
     all feature frames (Home, CheckBox, Insights, Extract) are stacked on top
-    of each other â€” only the active frame is raised to the top.
+    of each other — only the active frame is raised to the top.
     """
 
     def __init__(self):
@@ -196,14 +196,14 @@ class PDFExtractorApp(tk.Tk):
         self._build_layout()            # create sidebar + content area
         self._show_frame("home")        # open the Home screen on launch
 
-    # â”€â”€ Layout construction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Layout construction ───────────────────────────────────────────────────
     def _build_layout(self):
         """
         Build the two-panel layout:
           Left:  fixed-width dark sidebar with navigation buttons
           Right: full-height content area housing all feature frames
         """
-        # â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Sidebar ───────────────────────────────────────────────────────────
         sidebar = tk.Frame(self, bg=CLR_SIDEBAR, width=200)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)   # prevent sidebar from shrinking to fit children
@@ -221,11 +221,11 @@ class PDFExtractorApp(tk.Tk):
 
         # Navigation items: (display label, frame key)
         nav_items = [
-            ("ðŸ   Home",          "home"),
-            ("ðŸ“‚  Check Box",     "check"),
-            ("ðŸ“Š  Insights",      "insights"),
-            ("âš™ï¸  Extract Files", "extract"),
-            ("ðŸ’¬  AI Assistant",  "chat"),
+            ("🏠  Home",          "home"),
+            ("📂  Check Box",     "check"),
+            ("📊  Insights",      "insights"),
+            ("⚙️  Extract Files", "extract"),
+            ("💬  AI Assistant",  "chat"),
         ]
         self._nav_btns = {}
         for label, key in nav_items:
@@ -250,7 +250,7 @@ class PDFExtractorApp(tk.Tk):
             font=FONT_SMALL,
         ).pack(side="bottom", pady=8)
 
-        # â”€â”€ Content area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Content area ──────────────────────────────────────────────────────
         self._content = tk.Frame(self, bg=CLR_BG)
         self._content.pack(side="left", fill="both", expand=True)
 
@@ -272,7 +272,7 @@ class PDFExtractorApp(tk.Tk):
         """
         Raise the named frame to the top and update the sidebar highlight.
         on_show() is called after a brief defer (self.after(0)) so the frame
-        becomes visible before any data-loading work begins â€” prevents UI lag.
+        becomes visible before any data-loading work begins — prevents UI lag.
         """
         # Update sidebar button colours: active = accent blue, inactive = dark navy
         for k, btn in self._nav_btns.items():
@@ -287,7 +287,7 @@ class PDFExtractorApp(tk.Tk):
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# Home Frame â€” landing page with three shortcut cards
+# Home Frame — landing page with three shortcut cards
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class HomeFrame(tk.Frame):
     """
@@ -316,16 +316,16 @@ class HomeFrame(tk.Frame):
         cards_frame.pack()
 
         cards = [
-            ("ðŸ“‚", "Check Box Folder",
+            ("📂", "Check Box Folder",
              "Scan your Box folder for PDF files\nand see their extraction status.",
              "check"),
-            ("ðŸ“Š", "Insights",
+            ("📊", "Insights",
              "View charts and statistics on\nextraction progress over time.",
              "insights"),
-            ("âš™ï¸", "Extract Files",
+            ("⚙️", "Extract Files",
              "Run the extraction pipeline and\narchive processed PDF files.",
              "extract"),
-            ("ðŸ’¬", "AI Assistant",
+            ("💬", "AI Assistant",
              "Chat with WatsonX AI to query\nreports or trigger actions.",
              "chat"),
         ]
@@ -347,7 +347,7 @@ class HomeFrame(tk.Frame):
         )
         card.pack(side="left", padx=14, pady=10, ipadx=16, ipady=14)
 
-        # Bind the click handler on both the card frame AND every child label â€”
+        # Bind the click handler on both the card frame AND every child label —
         # clicks on child widgets do not bubble up to the parent frame in Tkinter,
         # so each widget needs its own binding to ensure the whole card is clickable.
         nav = lambda e, k=key: self.app._show_frame(k)
@@ -368,13 +368,13 @@ class HomeFrame(tk.Frame):
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# Check Box Frame â€” scan Box folder and display Pending files
+# Check Box Frame — scan Box folder and display Pending files
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class CheckBoxFrame(tk.Frame):
     """
     Displays PDF files found in the configured Box source folder.
 
-    Only files with status "Pending" are shown in the table â€” Completed files
+    Only files with status "Pending" are shown in the table — Completed files
     are counted in the summary bar but excluded from the list to reduce noise.
 
     The Scan operation runs on a background thread so the UI stays responsive.
@@ -387,7 +387,7 @@ class CheckBoxFrame(tk.Frame):
         super().__init__(parent, bg=CLR_BG)
         self.app = app
 
-        # â”€â”€ Header row (title + scan button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Header row (title + scan button) ─────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
         hdr.pack(fill="x", padx=24, pady=(20, 8))
         tk.Label(hdr, text="Check Box Folder", bg=CLR_BG,
@@ -403,18 +403,18 @@ class CheckBoxFrame(tk.Frame):
         )
         self._scan_btn.pack(side="right")
 
-        # â”€â”€ Summary counts bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Summary counts bar ────────────────────────────────────────────────
         # Shows Total / Completed / Pending counts above the table
         self._summary_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._summary_var,
                  bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
 
-        # â”€â”€ Status bar at the bottom (packed first so it anchors to bottom) â”€â”€
+        # ── Status bar at the bottom (packed first so it anchors to bottom) ──
         self._status_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._status_var,
                  bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(side="bottom", pady=6)
 
-        # â”€â”€ File table + empty-state label in a shared container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── File table + empty-state label in a shared container ─────────────
         # Both widgets live inside table_frame; only one is visible at a time.
         table_frame = tk.Frame(self, bg=CLR_BG)
         table_frame.pack(fill="both", expand=True, padx=24, pady=(0, 8))
@@ -435,7 +435,7 @@ class CheckBoxFrame(tk.Frame):
         self._tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
 
-        # Empty-state label â€” overlaid via place() when there are no Pending files
+        # Empty-state label — overlaid via place() when there are no Pending files
         self._empty_label = tk.Label(
             table_frame,
             text="No File(s) available on the folder",
@@ -444,7 +444,7 @@ class CheckBoxFrame(tk.Frame):
             highlightbackground="#E5E7EB",
             highlightthickness=1,
         )
-        # Not visible on startup â€” shown/hidden by _populate_from_db()
+        # Not visible on startup — shown/hidden by _populate_from_db()
 
     def on_show(self):
         """Called by _show_frame when this screen becomes active. Refreshes the table."""
@@ -478,7 +478,7 @@ class CheckBoxFrame(tk.Frame):
 
         # Update the summary counts bar
         self._summary_var.set(
-            f"Total: {len(files)}   |   âœ… Completed: {completed}   |   ðŸ• Pending: {pending}"
+            f"Total: {len(files)}   |   ✅ Completed: {completed}   |   🕐 Pending: {pending}"
         )
 
         # Show the empty-state label when no Pending files exist; restore table otherwise
@@ -496,8 +496,8 @@ class CheckBoxFrame(tk.Frame):
         Disables the button immediately (to prevent double-clicks) and starts
         the Box API call on a background thread.
         """
-        self._scan_btn.config(state="disabled", text="  â³  Scanningâ€¦  ")
-        self._status_var.set("Scanning Box folderâ€¦")
+        self._scan_btn.config(state="disabled", text="  ⏳  Scanning…  ")
+        self._status_var.set("Scanning Box folder…")
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
     def _scan_worker(self):
@@ -507,9 +507,9 @@ class CheckBoxFrame(tk.Frame):
 
         Resetting to Pending on every scan is intentional: if a file is still
         in the source folder, it either hasn't been extracted yet or a previous
-        extraction attempt failed â€” it should be available for extraction again.
+        extraction attempt failed — it should be available for extraction again.
 
-        All UI updates are posted back to the main thread via self.after(0, â€¦).
+        All UI updates are posted back to the main thread via self.after(0, …).
         """
         try:
             client, cfg = get_box_client()
@@ -540,16 +540,16 @@ class CheckBoxFrame(tk.Frame):
             # Post UI updates back to the main thread
             self.after(0, self._populate_from_db)
             self.after(0, lambda: self._status_var.set(
-                f"Scan complete â€” {found} PDF(s) found in Box folder."
+                f"Scan complete — {found} PDF(s) found in Box folder."
             ))
 
         except Exception as exc:
-            # Show a concise inline error in the status bar â€” no popup.
+            # Show a concise inline error in the status bar — no popup.
             # A 401/400 from Box almost always means the Developer Token has
             # expired. The user just needs to update access_token in config.json.
             err_text = str(exc)
             if "401" in err_text or "400" in err_text or "invalid_token" in err_text:
-                msg = "âš  Box token expired â€” update access_token in config.json and scan again."
+                msg = "âš  Box token expired — update access_token in config.json and scan again."
             else:
                 msg = f"âš  Scan failed: {err_text[:120]}"
             self.after(0, lambda m=msg: self._status_var.set(m))
@@ -562,14 +562,14 @@ class CheckBoxFrame(tk.Frame):
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# Insights Frame â€” extraction statistics bar chart
+# Insights Frame — extraction statistics bar chart
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class InsightsFrame(tk.Frame):
     """
     Displays a bar chart of extraction counts bucketed by time period.
     Each period shows two bars side-by-side: Completed (green) and Pending (amber).
 
-    The chart is drawn directly onto a tk.Canvas using primitive shapes â€” no
+    The chart is drawn directly onto a tk.Canvas using primitive shapes — no
     external charting library is required. The canvas redraws on resize.
 
     Filter options: Day / Week / Month / Year (radio buttons).
@@ -580,7 +580,7 @@ class InsightsFrame(tk.Frame):
         self.app     = app
         self._filter = tk.StringVar(value="Month")   # default time grouping
 
-        # â”€â”€ Header row (title + filter controls) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Header row (title + filter controls) ─────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
         hdr.pack(fill="x", padx=24, pady=(20, 8))
         tk.Label(hdr, text="Extraction Insights", bg=CLR_BG,
@@ -607,12 +607,12 @@ class InsightsFrame(tk.Frame):
             command=self._refresh,
         ).pack(side="left", padx=(10, 0))
 
-        # â”€â”€ Summary cards row (Total / Completed / Pending) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        # Rebuilt on every refresh â€” children are destroyed and re-created
+        # ── Summary cards row (Total / Completed / Pending) ───────────────────
+        # Rebuilt on every refresh — children are destroyed and re-created
         self._cards_frame = tk.Frame(self, bg=CLR_BG)
         self._cards_frame.pack(fill="x", padx=24, pady=(0, 10))
 
-        # â”€â”€ Chart canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Chart canvas ──────────────────────────────────────────────────────
         self._canvas = tk.Canvas(
             self, bg=CLR_WHITE,
             highlightbackground="#E5E7EB", highlightthickness=1,
@@ -669,7 +669,7 @@ class InsightsFrame(tk.Frame):
         # Sort buckets chronologically by key (string sort works for ISO-format keys)
         self._chart_data = dict(sorted(buckets.items()))
 
-        # â”€â”€ Rebuild summary cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Rebuild summary cards ─────────────────────────────────────────────
         for w in self._cards_frame.winfo_children():
             w.destroy()   # remove old cards before creating new ones
 
@@ -679,8 +679,8 @@ class InsightsFrame(tk.Frame):
 
         for label, val, colour in [
             ("Total Files",  total,     CLR_ACCENT),
-            ("âœ… Completed", completed, CLR_GREEN),
-            ("ðŸ• Pending",   pending,   CLR_PENDING),
+            ("✅ Completed", completed, CLR_GREEN),
+            ("🕐 Pending",   pending,   CLR_PENDING),
         ]:
             card = tk.Frame(self._cards_frame, bg=colour, padx=20, pady=12)
             card.pack(side="left", padx=6, ipadx=6)
@@ -705,7 +705,7 @@ class InsightsFrame(tk.Frame):
             # Show a placeholder message when there is nothing to chart
             c.create_text(
                 c.winfo_width() // 2, c.winfo_height() // 2,
-                text="No data â€” scan Box folder first.",
+                text="No data — scan Box folder first.",
                 fill=CLR_MUTED, font=FONT_LABEL,
             )
             return
@@ -713,7 +713,7 @@ class InsightsFrame(tk.Frame):
         W = c.winfo_width()
         H = c.winfo_height()
         if W < 10 or H < 10:
-            return   # canvas not yet sized â€” drawing would be nonsensical
+            return   # canvas not yet sized — drawing would be nonsensical
 
         # Chart margins: left (Y axis labels), right, top, bottom (X axis labels)
         pad_l, pad_r, pad_t, pad_b = 60, 30, 30, 60
@@ -732,11 +732,11 @@ class InsightsFrame(tk.Frame):
         bar_w = max(6, chart_w // (n * 2 + 1))
         gap   = bar_w // 2
 
-        # â”€â”€ Draw axes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Draw axes ─────────────────────────────────────────────────────────
         c.create_line(pad_l, pad_t, pad_l, H - pad_b, fill=CLR_MUTED, width=1)   # Y axis
         c.create_line(pad_l, H - pad_b, W - pad_r, H - pad_b, fill=CLR_MUTED, width=1)   # X axis
 
-        # â”€â”€ Draw Y-axis gridlines and labels (5 evenly spaced ticks) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Draw Y-axis gridlines and labels (5 evenly spaced ticks) ─────────
         for i in range(5):
             y_val = max_v * i / 4
             y_px  = H - pad_b - int(chart_h * i / 4)
@@ -746,7 +746,7 @@ class InsightsFrame(tk.Frame):
             c.create_text(pad_l - 6, y_px, text=str(int(y_val)),
                           anchor="e", fill=CLR_MUTED, font=FONT_SMALL)
 
-        # â”€â”€ Draw bars and X-axis labels for each time-period bucket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Draw bars and X-axis labels for each time-period bucket ───────────
         slot = chart_w / n   # horizontal space allocated per group of bars
 
         for idx, key in enumerate(keys):
@@ -773,14 +773,14 @@ class InsightsFrame(tk.Frame):
                         fill=CLR_WHITE, font=("Segoe UI", 7, "bold"),
                     )
 
-            # X-axis label â€” truncate long keys to last 7 characters for readability
+            # X-axis label — truncate long keys to last 7 characters for readability
             lbl = key if len(key) <= 10 else key[-7:]
             c.create_text(
                 pad_l + int(idx * slot + slot / 2), H - pad_b + 14,
                 text=lbl, fill=CLR_TEXT, font=FONT_SMALL,
             )
 
-        # â”€â”€ Legend (top-right corner) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Legend (top-right corner) ─────────────────────────────────────────
         for i, (label, colour) in enumerate(
             [("Completed", CLR_GREEN), ("Pending", CLR_PENDING)]
         ):
@@ -791,7 +791,7 @@ class InsightsFrame(tk.Frame):
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# Extract Frame â€” run the full extraction pipeline
+# Extract Frame — run the full extraction pipeline
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class ExtractFrame(tk.Frame):
     """
@@ -802,13 +802,13 @@ class ExtractFrame(tk.Frame):
     stays responsive throughout. A _running flag prevents overlapping runs.
 
     On completion of each file, a result card is added to the results panel
-    via self.after(0, â€¦) to stay on the main thread. A per-file .log file is
+    via self.after(0, …) to stay on the main thread. A per-file .log file is
     also written to the Log History folder tree.
 
     After a successful extraction:
-      â€¢ Word / Excel / JSON exports are saved under the dated folder hierarchy
-      â€¢ The PDF is moved on Box from the source folder to the Archive folder
-      â€¢ The file entry in tracking_db.json is marked "Completed"
+      • Word / Excel / JSON exports are saved under the dated folder hierarchy
+      • The PDF is moved on Box from the source folder to the Archive folder
+      • The file entry in tracking_db.json is marked "Completed"
     """
 
     def __init__(self, parent, app):
@@ -816,14 +816,14 @@ class ExtractFrame(tk.Frame):
         self.app      = app
         self._running = False   # prevents starting a second extraction while one is active
 
-        # â”€â”€ Header row (title + start button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Header row (title + start button) ────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
         hdr.pack(fill="x", padx=24, pady=(20, 8))
         tk.Label(hdr, text="Extract Files", bg=CLR_BG,
                  fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
         self._btn = tk.Button(
             hdr,
-            text="  â–¶  Start Extraction  ",
+            text="  ▶  Start Extraction  ",
             bg=CLR_GREEN, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat",
             cursor="hand2", padx=8, pady=6,
@@ -831,17 +831,17 @@ class ExtractFrame(tk.Frame):
         )
         self._btn.pack(side="right")
 
-        # â”€â”€ Indeterminate progress bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Indeterminate progress bar ────────────────────────────────────────
         # Starts spinning when extraction begins; stops when all files are done
         self._progress = ttk.Progressbar(self, orient="horizontal", mode="indeterminate")
         self._progress.pack(fill="x", padx=24, pady=(0, 6))
 
-        # â”€â”€ Current-operation status label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Current-operation status label ────────────────────────────────────
         self._status_var = tk.StringVar(value="Ready.")
         tk.Label(self, textvariable=self._status_var,
                  bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
 
-        # â”€â”€ Scrollable results panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Scrollable results panel ──────────────────────────────────────────
         # One card is added per processed file. Previous cards are cleared when
         # a new extraction run starts.
         tk.Label(self, text="Results", bg=CLR_BG,
@@ -872,7 +872,7 @@ class ExtractFrame(tk.Frame):
             lambda e: self._canvas.itemconfig(self._canvas_window, width=e.width),
         )
 
-    # â”€â”€ Silent log stub â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Silent log stub ───────────────────────────────────────────────────────
     def _log_write(self, msg: str):
         """
         No-op stub kept so that existing _do_extraction log calls do not raise
@@ -881,17 +881,17 @@ class ExtractFrame(tk.Frame):
         """
         pass
 
-    # â”€â”€ Result card builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Result card builder ───────────────────────────────────────────────────
     def _add_result_card(self, fname: str, ref: str, status: str,
                          word: str, excel: str, json_: str):
         """
         Add a result card to the scrollable results panel.
-        Must be called from the main thread (use self.after(0, â€¦) from workers).
+        Must be called from the main thread (use self.after(0, …) from workers).
 
-        fname  â€” PDF file name
-        ref    â€” reference number (success) or error message (failure)
-        status â€” "ok" for success, anything else for failure
-        word / excel / json_ â€” relative output paths (empty on failure)
+        fname  — PDF file name
+        ref    — reference number (success) or error message (failure)
+        status — "ok" for success, anything else for failure
+        word / excel / json_ — relative output paths (empty on failure)
         """
         ok     = (status == "ok")
         colour = CLR_GREEN if ok else CLR_ORANGE
@@ -910,7 +910,7 @@ class ExtractFrame(tk.Frame):
         top.pack(fill="x", padx=10, pady=(6, 2))
         tk.Label(top, text=fname, bg=CLR_WHITE, fg=CLR_TEXT,
                  font=FONT_BOLD, anchor="w").pack(side="left")
-        badge_text = "âœ…  Completed" if ok else "âŒ  Failed"
+        badge_text = "✅  Completed" if ok else "❌  Failed"
         tk.Label(top, text=badge_text, bg=colour, fg=CLR_WHITE,
                  font=FONT_SMALL, padx=8, pady=2).pack(side="right")
 
@@ -920,9 +920,9 @@ class ExtractFrame(tk.Frame):
                      fg=CLR_MUTED, font=FONT_SMALL, anchor="w").pack(
                          fill="x", padx=10, pady=(0, 2))
             for icon, path in [
-                ("ðŸ“„ Word",  word),
-                ("ðŸ“Š Excel", excel),
-                ("ðŸ—‚ JSON",  json_),
+                ("📄 Word",  word),
+                ("📊 Excel", excel),
+                ("🗂 JSON",  json_),
             ]:
                 tk.Label(
                     card, text=f"{icon}:  {path}",
@@ -938,7 +938,7 @@ class ExtractFrame(tk.Frame):
                 wraplength=700, justify="left",
             ).pack(fill="x", padx=10, pady=(0, 4))
 
-    # â”€â”€ Extraction lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Extraction lifecycle ───────────────────────────────────────────────────
     def _start_extraction(self):
         """
         Called by the Start button. Guards against double-clicks via _running flag.
@@ -948,7 +948,7 @@ class ExtractFrame(tk.Frame):
         if self._running:
             return   # ignore click if an extraction is already in progress
         self._running = True
-        self._btn.config(state="disabled", text="  â³  Extractingâ€¦  ")
+        self._btn.config(state="disabled", text="  ⏳  Extracting…  ")
         self._progress.start(12)   # spin at 12 ms interval
 
         # Clear previous result cards
@@ -975,9 +975,9 @@ class ExtractFrame(tk.Frame):
     def _extraction_done(self):
         """Re-enable the button and stop the progress bar (called on main thread)."""
         self._progress.stop()
-        self._btn.config(state="normal", text="  â–¶  Start Extraction  ")
+        self._btn.config(state="normal", text="  ▶  Start Extraction  ")
 
-    # â”€â”€ Main extraction pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── Main extraction pipeline ───────────────────────────────────────────────
     def _do_extraction(self):
         """
         Full extraction pipeline, runs on a background thread.
@@ -990,7 +990,7 @@ class ExtractFrame(tk.Frame):
           5. Move the PDF on Box from the source folder to the Archive folder
           6. Update tracking_db.json to mark the file Completed
           7. Write a per-file .log file to Log History/
-          8. Add a result card to the UI (via self.after(0, â€¦))
+          8. Add a result card to the UI (via self.after(0, …))
 
         Files that fail at any step are caught individually; a failure log and
         error card are generated, and the file remains Pending in the tracking DB.
@@ -1003,9 +1003,9 @@ class ExtractFrame(tk.Frame):
         extractor = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(extractor)
 
-        self.after(0, lambda: self._status_var.set("Loading extractor moduleâ€¦"))
+        self.after(0, lambda: self._status_var.set("Loading extractor module…"))
 
-        # â”€â”€ Read configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Read configuration ────────────────────────────────────────────────
         cfg               = extractor.load_config()
         password          = cfg.get("pdf_password", "")
         box_cfg           = cfg.get("box", {})
@@ -1013,16 +1013,16 @@ class ExtractFrame(tk.Frame):
         archive_folder_id = box_cfg.get("archive_folder_id", "")    # Box archive folder
         search_sub        = cfg.get("settings", {}).get("search_subfolders", True)
 
-        # â”€â”€ Authenticate with Box â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        self.after(0, lambda: self._status_var.set("Connecting to Boxâ€¦"))
+        # ── Authenticate with Box ─────────────────────────────────────────────
+        self.after(0, lambda: self._status_var.set("Connecting to Box…"))
         client = extractor.get_box_client(box_cfg)
 
-        # â”€â”€ Find PDF files in the source folder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        self.after(0, lambda: self._status_var.set("Scanning Box folderâ€¦"))
+        # ── Find PDF files in the source folder ───────────────────────────────
+        self.after(0, lambda: self._status_var.set("Scanning Box folder…"))
         pdf_files = extractor.find_pdf_files_on_box(client, folder_id, search_sub)
 
         if not pdf_files:
-            # Nothing to extract â€” update status and return
+            # Nothing to extract — update status and return
             self.after(0, lambda: self._status_var.set("No PDFs found in source folder."))
             return
 
@@ -1033,22 +1033,22 @@ class ExtractFrame(tk.Frame):
         for d in (extractor.WORD_OUT_DIR, extractor.CSV_OUT_DIR, extractor.JSON_OUT_DIR):
             d.mkdir(parents=True, exist_ok=True)
 
-        # â”€â”€ Process each PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Process each PDF ──────────────────────────────────────────────────
         for box_file in pdf_files:
             fid   = box_file["id"]
             fname = box_file["name"]
             self.after(0, lambda n=fname: self._status_var.set(f"Processing: {n}"))
 
             try:
-                # Step 1 â€” Download from Box (bytes held in memory, no disk temp file)
+                # Step 1 — Download from Box (bytes held in memory, no disk temp file)
                 pdf_bytes = extractor.download_pdf_bytes(client, fid, fname)
 
-                # Step 2 â€” Decrypt (if needed) and extract text per page
+                # Step 2 — Decrypt (if needed) and extract text per page
                 doc   = extractor.open_and_decrypt_pdf(pdf_bytes, fname, password)
                 pages = extractor.extract_text_by_page(doc)
                 doc.close()   # release the fitz document as soon as pages are extracted
 
-                # Step 3 â€” Parse all pages into a structured dict
+                # Step 3 — Parse all pages into a structured dict
                 structured = extractor.build_structured_json(fname, pages)
 
                 # Extract the Case Reference No to use as the output folder/file name.
@@ -1059,7 +1059,7 @@ class ExtractFrame(tk.Frame):
                     or Path(fname).stem
                 )
 
-                # Step 4 â€” Export to dated folder hierarchy
+                # Step 4 — Export to dated folder hierarchy
                 # Build the daily subfolder under each output root
                 daily_word = build_extract_folder(extractor.WORD_OUT_DIR, now)
                 daily_csv  = build_extract_folder(extractor.CSV_OUT_DIR,  now)
@@ -1081,14 +1081,14 @@ class ExtractFrame(tk.Frame):
                     extractor.CSV_OUT_DIR  = BASE_DIR / "CSV Extracts"
                     extractor.JSON_OUT_DIR = BASE_DIR / "JSON File Extracts"
 
-                # Step 5 â€” Move the PDF on Box to the Archive folder
+                # Step 5 — Move the PDF on Box to the Archive folder
                 # Box's move() removes the file from the source folder in one API call.
                 if archive_folder_id:
                     client.file(fid).move(
                         parent_folder=client.folder(archive_folder_id)
                     )
 
-                # Step 6 â€” Mark the file as Completed in the tracking DB
+                # Step 6 — Mark the file as Completed in the tracking DB
                 if fid not in db["files"]:
                     db["files"][fid] = {}
                 db["files"][fid].update({
@@ -1099,9 +1099,9 @@ class ExtractFrame(tk.Frame):
                     "archived":       True,
                 })
 
-                # Step 7 â€” Write per-file extraction log to Log History/
+                # Step 7 — Write per-file extraction log to Log History/
                 log_lines = [
-                    "Background Check Report Automation â€” Extraction Log",
+                    "Background Check Report Automation — Extraction Log",
                     "=" * 60,
                     f"File       : {fname}",
                     f"Reference  : {ref_number}",
@@ -1119,7 +1119,7 @@ class ExtractFrame(tk.Frame):
                 ]
                 write_extraction_log(ref_number, now, "\n".join(log_lines))
 
-                # Step 8 â€” Add a success result card on the main thread
+                # Step 8 — Add a success result card on the main thread
                 self.after(0, lambda f=fname, r=ref_number,
                                       w=str(word_path.relative_to(BASE_DIR)),
                                       x=str(csv_path.relative_to(BASE_DIR)),
@@ -1128,7 +1128,7 @@ class ExtractFrame(tk.Frame):
                 )
 
             except Exception as exc:
-                # â”€â”€ Per-file failure handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                # ── Per-file failure handling ─────────────────────────────────
                 # Keep the file as Pending so it can be retried
                 if fid not in db["files"]:
                     db["files"][fid] = {"name": fname}
@@ -1137,7 +1137,7 @@ class ExtractFrame(tk.Frame):
                 # Write a failure log using the filename stem as the ref fallback
                 ref_fallback = Path(fname).stem
                 log_lines = [
-                    "Background Check Report Automation â€” Extraction Log",
+                    "Background Check Report Automation — Extraction Log",
                     "=" * 60,
                     f"File       : {fname}",
                     f"Reference  : {ref_fallback}",
@@ -1156,23 +1156,23 @@ class ExtractFrame(tk.Frame):
                     self._add_result_card(f, e, "error", "", "", "")
                 )
 
-        # â”€â”€ Post-loop: persist tracking DB and update status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # ── Post-loop: persist tracking DB and update status ──────────────────
         save_tracking(db)
         self.app.db = db   # keep the app-level reference in sync
         self.after(0, lambda: self._status_var.set("Extraction complete."))
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-# AI Assistant â€” Dual-LLM (IBM Granite â†’ Groq fallback), grounded lookup,
+# AI Assistant — Dual-LLM (IBM Granite → Groq fallback), grounded lookup,
 # hallucination guard.  Ported from the web app (app.py) so both apps share
 # identical anti-hallucination logic and routing.
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 import re as _re_ai   # keep separate from any 're' already imported by the UI
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 # Path constants for the AI helpers
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 JSON_EXTRACTS_DIR = BASE_DIR / "JSON File Extracts"   # root for all .json outputs
 
 
