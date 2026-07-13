@@ -2130,8 +2130,53 @@ class ChatFrame(tk.Frame):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Startup folder bootstrap — ensures all required local folders exist before
+# the app starts, so no screen ever encounters a missing directory.
+# ─────────────────────────────────────────────────────────────────────────────
+def _ensure_folders() -> None:
+    """
+    Create every folder that the app reads from or writes to, if it does not
+    already exist.  Uses mkdir(parents=True, exist_ok=True) so it is safe to
+    call on every startup regardless of current state.
+
+    Folders created here
+    ────────────────────
+    • Log History/                     — log viewer + per-file extraction logs
+    • Local Folder/                    — Box sync destination (also created lazily
+                                         by _local_folder(), but done here too so
+                                         the folder is visible before first sync)
+    • Local Folder/Extracted/          — root for all output files
+    • Local Folder/Extracted/Word Extracts/
+    • Local Folder/Extracted/CSV Extracts/
+    • Local Folder/Extracted/JSON File Extracts/
+    """
+    try:
+        cfg = _read_config()
+    except Exception:
+        cfg = {}
+
+    local_rel     = cfg.get("local", {}).get("local_folder",    "Local Folder")
+    extracted_rel = cfg.get("local", {}).get("extracted_folder","Local Folder/Extracted")
+
+    local_path     = Path(local_rel)     if Path(local_rel).is_absolute()     else BASE_DIR / local_rel
+    extracted_path = Path(extracted_rel) if Path(extracted_rel).is_absolute() else BASE_DIR / extracted_rel
+
+    folders = [
+        LOG_HISTORY_DIR,
+        local_path,
+        extracted_path,
+        extracted_path / "Word Extracts",
+        extracted_path / "CSV Extracts",
+        extracted_path / "JSON File Extracts",
+    ]
+    for folder in folders:
+        folder.mkdir(parents=True, exist_ok=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    _ensure_folders()
     app = PDFExtractorAppV2()
     app.mainloop()
