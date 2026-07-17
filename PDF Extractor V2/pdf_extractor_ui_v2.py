@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-09"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-10"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2338,26 +2338,40 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         lower.strip(), _re_ai.IGNORECASE
     )
 
-    # ── Sub-step: user just provided a file type after we asked ───────────────
-    _FILETYPE_MARKERS = (
-        "which file type would you like",
-        "word, excel, or json",
-    )
-    _SUBJECT_MARKERS  = (
-        "which person",
-        "please clarify",
-        "multiple reports found",
-        "did you mean",
-    )
-    _last_bot_lower = _last_bot.lower() if "_last_bot" in dir() else ""
-    # re-compute _last_bot if not set
-    _last_bot2 = next(
+    # ── Context from last bot turn ────────────────────────────────────────────
+    _last_bot2       = next(
         (t.get("content","") for t in reversed(history) if t.get("role") == "assistant"), ""
     )
     _last_bot_lower2 = _last_bot2.lower()
 
+    _FILETYPE_MARKERS    = ("which file type would you like", "word, excel, or json")
+    _CONFIRM_MARKERS     = ("just to confirm", "ref:", "yes to open")
+    _SUBJECT_MARKERS     = ("which person", "please clarify", "multiple reports found", "did you mean")
+
+    # ── Sub-step A: user confirmed Yes/No after ref confirmation ──────────────
+    if any(m in _last_bot_lower2 for m in _CONFIRM_MARKERS):
+        # Extract ref and file type encoded in the bot's confirmation message
+        _ref_m  = _re_ai.search(r"Ref:\s*([\w\-]+)", _last_bot2)
+        _ft_m   = _re_ai.search(r"\b(Word|Excel|JSON)\b", _last_bot2, _re_ai.IGNORECASE)
+        _ref_c  = _ref_m.group(1).strip()  if _ref_m  else ""
+        _ft_c   = _ft_m.group(1).lower()   if _ft_m   else ""
+        _yes    = lower.strip() in ("yes","y","yep","yeah","sure","ok","okay","confirm","open it","proceed")
+        _no     = lower.strip() in ("no","n","nope","cancel","wrong","incorrect","not this one")
+        if _yes and _ref_c and _ft_c:
+            return _skill_open_report(_ref_c, _ft_c)
+        if _no:
+            return (
+                "No problem — please say **generate report for [name or reference]** "
+                "to try again."
+            )
+        # Ambiguous — re-prompt
+        return (
+            f"Please reply **Yes** to open the {_ft_c.capitalize()} report "
+            f"(Ref: {_ref_c}), or **No** to cancel."
+        )
+
+    # ── Sub-step B: user just provided a file type after we asked ─────────────
     if any(m in _last_bot_lower2 for m in _FILETYPE_MARKERS):
-        # User replied with a file type — find the subject from prior context
         _ft_lower = lower.strip()
         _ft_map   = {
             "word": "word", "doc": "word", "docx": "word",
@@ -2370,28 +2384,29 @@ def route_chat_message(message: str, history: list[dict]) -> str:
                 "Please specify the file type:\n"
                 "  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)"
             )
-        # Recover subject from the last assistant turn that contained a name/ref
-        _subj_match2 = _re_ai.search(
-            r"(?:report for|for)\s+['\"]?([^\"'\n?]+)['\"]?", _last_bot2, _re_ai.IGNORECASE
-        )
-        _subj2 = _subj_match2.group(1).strip() if _subj_match2 else None
-        if not _subj2:
-            # Try recovering from the turn before that
+        # Recover ref directly from the bot's "Found report for" message
+        _ref_recover = _re_ai.search(r"\(Ref:\s*([\w\-]+)\)", _last_bot2)
+        if not _ref_recover:
+            # Scan earlier history turns
             for _ht in reversed(history[:-1]):
                 if _ht.get("role") == "assistant":
-                    _m2 = _re_ai.search(
-                        r"(?:report for|for)\s+['\"]?([^\"'\n?]+)['\"]?",
-                        _ht.get("content",""), _re_ai.IGNORECASE
-                    )
-                    if _m2:
-                        _subj2 = _m2.group(1).strip()
+                    _ref_recover = _re_ai.search(r"\(Ref:\s*([\w\-]+)\)", _ht.get("content",""))
+                    if _ref_recover:
                         break
-        if not _subj2:
-            return "I lost track of which person you meant. Please say: **generate report for [name]**"
-        return _skill_open_report(_subj2, _chosen_ft)
+        if not _ref_recover:
+            return "I lost track of which report you meant. Please say: **generate report for [name]**"
+        _ref_val = _ref_recover.group(1).strip()
+        # Look up the subject name from the ref for the confirmation message
+        _all_m   = _find_report_files(_ref_val)
+        _subj_c  = _all_m[0]["subject"] if _all_m else _ref_val
+        return (
+            f"Just to confirm — you'd like the **{_chosen_ft.capitalize()}** report for:\n\n"
+            f"  **{_subj_c}**  (Ref: {_ref_val})\n\n"
+            f"Reply **Yes** to open it, or **No** to cancel."
+        )
 
+    # ── Sub-step C: user clarified subject after ambiguous match ─────────────
     if any(m in _last_bot_lower2 for m in _SUBJECT_MARKERS):
-        # User replied with a clarification — treat as a new generate-report-for request
         _rq2 = message.strip()
         return (
             f"Got it — report for **{_rq2}**.\n\n"
@@ -2429,7 +2444,8 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         return (
             f"Found report for **{_m['subject']}** (Ref: {_m['ref']}).\n\n"
             f"Which file type would you like?\n"
-            f"  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)"
+            f"  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)\n"
+            f"  word, excel, or json"
         )
 
     # 7. Lookup verb patterns
