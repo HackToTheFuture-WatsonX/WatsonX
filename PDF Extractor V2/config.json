@@ -6,9 +6,9 @@
 
   "box": {
     "_help": "Create a Box App at https://app.box.com/developers/console to get these values.",
-    "client_id":        "YOUR_BOX_CLIENT_ID",
-    "client_secret":    "YOUR_BOX_CLIENT_SECRET",
-    "access_token":     "YOUR_BOX_DEVELOPER_TOKEN",
+    "client_id":        "z4ro37dgbv4erhm1t8m8frrfvb2am2ji",
+    "client_secret":    "QC5PkPu4d9pa3L2EExLgqS6YL9MuYcB7",
+    "access_token":     "pi5FblxLNWUc7rQmq11jWiywmzh134nu",
     "folder_id":        "398448580241",
     "archive_folder_id":"398464621507",
     "output_folder_id": "398794370345",
@@ -20,7 +20,9 @@
     "local_folder": "Local Folder",
     "_local_folder_note": "Path (relative to this config) where Box files are synced to locally.",
     "extracted_folder": "Local Folder/Extracted",
-    "_extracted_folder_note": "Sub-folder where all extracted output files are saved locally before being synced to Box output_folder_id."
+    "_extracted_folder_note": "Sub-folder where all extracted output files are saved locally before being synced to Box output_folder_id.",
+    "archive_folder": "Local Folder/Archive",
+    "_archive_folder_note": "Source PDFs are moved here after successful extraction so they are not re-processed on the next scan."
   },
 
   "sync": {
@@ -29,19 +31,15 @@
     "_auto_sync_note": "Set auto_sync_enabled=true to sync Box folder automatically at startup and every interval_minutes."
   },
 
-  "watsonx": {
-    "_help": "IBM WatsonX.AI credentials - get these from cloud.ibm.com > Manage > Access (IAM) > API Keys and your WatsonX project.",
-    "api_key":    "YOUR_WATSONX_API_KEY",
-    "project_id": "YOUR_WATSONX_PROJECT_ID",
-    "url":        "https://eu-de.ml.cloud.ibm.com",
-    "model_id":   "ibm/granite-3-8b-instruct",
-    "_model_note": "Other options: meta-llama/llama-3-1-8b-instruct, ibm/granite-13b-chat-v2"
-  },
-
-  "groq": {
-    "_help": "Groq API - free at console.groq.com. Runs Llama 3.3 70B instantly. Fallback when watsonx is not configured.",
-    "api_key":  "YOUR_GROQ_API_KEY",
-    "model":    "llama-3.3-70b-versatile"
+  "ica": {
+    "_help": "IBM Consulting Advantage (ICA) 1.0 — session-cookie based API.",
+    "_auth": "Paste the ENTIRE cookie string from DevTools → Request Headers → cookie (all cookies, not just ica_core_auth_proxy).",
+    "full_cookie":    "ajs_user_id=IBMid-66500219FX; BMAID=2bbff73a-a118-4478-8093-87d30cb35c5e; _ga=GA1.1.95908319.1783747968; ga_visitor=Direct|Organic|1; AMCV_D10F27705ED7F5130A495C99%40AdobeOrg=MCMID|63042491400199380943208003530790712207; _clck=13htlgu%5E2%5Eg7r%5E0%5E2384; notice_preferences=2:; notice_gdpr_prefs=0|1|2:; cmapi_gtm_bl=; cmapi_cookie_privacy=permit_1|2|3; optout_domains_pc=; _uetvid=2167d5b07df311f196a7e7469b71fddb|ytizh4|1784076156063|6|1|bat.bing.com/p/conversions/c/o; _hjSessionUser_42920=eyJpZCI6Ijk0YjUwZGZkLTI1OTQtNWFmMy05YjgyLTMxYjY2M2U4OTdmZiIsImNyZWF0ZWQiOjE3ODQxOTgwMjk5NzAsImV4aXN0aW5nIjp0cnVlfQ==; _biz_uid=ecceff29fee04b51c07cf503be2d1045; _biz_nA=2; _biz_pendingA=%5B%5D; _biz_flagsA=%7B%22Version%22%3A1%2C%22Ecid%22%3A%22-1524964514%22%2C%22ViewThrough%22%3A%221%22%2C%22XDomain%22%3A%221%22%7D; kndctr_D10F27705ED7F5130A495C99_AdobeOrg_identity=CiY2MzA0MjQ5MTQwMDE5OTM4MDk0MzIwODAwMzUzMDc5MDcxMjIwN1ITCIHhz7P1MxABGAEqBFNHUDMwAPAB9OD57vYz; CISESSIONIDPR07A=PBC5YS:1086799006; notice_behavior=implied|eu; ___tk67142224=1784269091194; com.ibm.cloud.iam.LoggedIn.prod=1; pageviewContext=b484b329-bd5a-4d1c-9948-28dd6c05a0d8; userContext=2bbff73a-a118-4478-8093-87d30cb35c5e|1|0|1|PH|00|1|2:|implied|zz|n/a|n/a|n/a|n/a|63042491400199380943208003530790712207; OPTOUTMULTI=0:0%7Cc1:1%7Cc2:0%7Cc3:0; _rdt_uuid=1784075716094.b51cafd4-a989-49a8-b8da-9c0fd46df3bc; kndctr_D10F27705ED7F5130A495C99_AdobeOrg_consent=general%3Din; at_check=true; mbox=session#1c62b9b677444ed8b6931c8c0e0ef52c#1784270971|PC#1c62b9b677444ed8b6931c8c0e0ef52c.38_0#1815805171; utag_main=_sn:12$_se:1%3Bexp-session$_ss:1%3Bexp-session$_st:1784275390543%3Bexp-session$ses_id:1784273590543%3Bexp-session$_pn:1%3Bexp-session$is_country_requiring_explicit_consent:false$v_id:019f6332eb20001bd6a106da97570507d001907500aee$dc_visit:1$dc_event:7%3Bexp-session$dc_region:ap-east-1%3Bexp-session$vapi_domain:ibm.com; _ga_FYECCCS21D=GS2.1.s1784273590$o9$g0$t1784273590$j60$l0$h0; ak_bmsc=3FACAB2543C62963E6A1D4232BADD350~000000000000000000000000000000~YAAQl7OKypRCLFufAQAAQ3cubwC/toGr1Ha4kIZ1bb2NqwguDmLaSBt9/QH47k1c71a5AfGM5G+Ns18Z/14v3/l3h9HIBI3ICz2ubG+ZBoQ/WJBtDhSlOIOmOt7QoAPxEy8Svk5PwypVt6Uu/HsJeL7BfMLMBmD+Extuw4eql3SvYSwQKOXjeUGfwZCv4dpjwk200dmwvUPmTTeIzQkwgz2AdN/6ac+Z53zWI2o/Ddg1zt1NLp7VsjLBUArZpykjmPG1g+b1Wg7j9HLG8+GIjScYY8BPneCwmDcsrfnI0iIt/Kiaw9h1eLTMa1HRYuoUvvLoxIRyr4x5QZhqdUpvpwzQdtDViNKZIgKopJo+6UV1tDcYIDgtm38guLhub15WbVaHZp/ym33+pQ==; _abck=A0F8CD837BA6DDA05630F8912E39CC91~0~YAAQl7OKysdGLFufAQAAhqoubxC+yvXWI5x35Gv5pOwH7S+tQgs3vr5Nm6qvmFME6LbMpdRDNpvZX+jLNp5gwvMUk+43YyNX7QXRgvZYspHvaHVrhObJsCLS0wcQqmve6WE6h+4CxgELQSPQgOhDSC12zR66lxhDnmfZHTsdWG4pucurp9sMB/bfSMdYWzR5gpZcCQj40eMMfcBPi3YcNFYklBVIHFx+qYQY8GABz4izWmZI8VPU+KyuS+vuj9TItqMgiOCKgn7fJQUWsAx0/mODpow9ljaUZ6nOLHkds1BxOm455zdQF2SNZ7HjJN4hQK8kHlXd9FL0ttDFxFC71JDTNXVXxi8ORG4RGQE6zt8b74SGAw1AddBUyyyOocpo35L3wtONYCqTekbhPTna4Jclnhx7ChzV5GEs6DkLKDvorPviYiVxKogLQQEagAX1qiG21iXW9N+IGcUa0799n9dD8lqNxVKP1/204dC2ZS5M0Yr2I3vyvl0lWsxlzyVOGHba1WqHGOBr7pxNZHJF70GZ5Qn0NR2zFvvavQgqSWE7G1l0MPhmIR1En6ofqpfWGUZps2BhVRhA9b/iMdjuns57j2YAiHr5/7ZYlB3n461QmhPUyLRZ8Ni/NNql2Ynbrsh+jUF4WWrfr1xastk+UdCLyMTznMwYavo/wHiDEnpe83PRpPJEirHrbA==~-1~-1~-1~AAQAAAAG%2f%2f%2f%2f%2f8i1fNBOpxUt2jHSSZGEfXZfV1N5s8h%2f9tAERz5lwyujxUzTeG5+Kwzb0FEjf4a8wJumpdlfQ+lv1qSHdI8oeKZEIsHura2kK5KPw1HtL%2f5Um3gdFDytkxDP5kl1FVsj8jk5Ntw%3d~-1; bm_sz=70E1ED28BFC0B5C1F1A8A8618852FA71~YAAQl7OKyqVJLFufAQAAoscubwCqtUQ2PzQIEVWHzGXcsWCmQPnpgcseWoEFNCYWPIp14BmmRr3tVXXbLOBiXe7JmF1f3cLobSqaAEOYGEygGiIFfj4x/J7EwRCKUzIeHRmz//KQ+dqvX/sK2MxWPUnxDxTa/0CC78xCjIa/i+hdZTchE+biKqS/f9xyWJwEYFpAHwbXTIw5Tynf4tuFva2rrTexy8QTO3tfP/I62oJAPdGjrVYEKwg6Mz1+evujkVklZDIyuOxnQ/I+L0jXeUz1KjiZjvc6555kq5hcIGUYFeWA5RrCkDN5rMVXU+23YP/zFvBX8/BoICrYqMVh6aS/bhKNi8wJZw1MSHibxYIGv4xd8H/ynQjpALvsUlWxE9hWJ2rDhLkI4YLuXgWHSoSCKyr6f3MT2b+4MAzTcBkXZqvFo/oLGHMLO1sr1VSlJOb5yUZVa3pMHCpJFxIlh/bT0HeQhzmtKCxIliahPUKyfzSJ2a2BG2Bp37wqdKxLSCX683qmN+l4VgGyWiPa6g==~3686981~3356482; ica_core_auth_proxy=djIuYVdOaFgyTnZjbVZmWVhWMGFGOXdjbTk0ZVMxaE56QTRNVFkzTnpFd01qVXlabU00WWpjelpHUTFZV1UyT0RjeVlUSTBOUS5XSlZBZ19TTmtIb0RDcDhSM1V1UzNB|1784276765|1aZto8YB5250wrSZrKgIWS5ZyYQWU-3h3Zf3jsGwQ5s=; bm_sv=2DCE249597AA236528CDF2D378E28BB5~YAAQXBQgFwiGBkefAQAAZtoubwCmfKYkG/vq30Bm5kU4OGxeK7R1Xu2rQcCM7+cLAo4/fsz2SKsidIKwH6kQSGCfOsiZv/Zw1HrkEioecYbJjnu7/puIxzmZONcuzXJRU82u18o3/8cBonYPQ4tBzWHMxcaoc5WwRslDU9SMM9cxC8i6Mvhlcs4iPAvYAlWtJU8rMjdGaoZ0tthWyz+N7QyzmTYe8nY3W+6jJ3HFqQq1BvVtdfBuTNIUFjpOEA==~1; TAsessionID=9b3a01ac-5d88-4dee-9280-17f4a99c640d|EXISTING; ajs_anonymous_id=2bbff73a-a118-4478-8093-87d30cb35c5e",
+    "team_id":        "664eadb17641e0429517edd9",
+    "team_name":      "Synapxe%20ODC",
+    "assistant_id":   "9de2015e-c6af-45f1-bf7e-ce8f281ab4a8",
+    "chat_id":        "6a59f4b3a7226dfc42e5f462",
+    "base_url":       "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat"
   },
 
   "settings": {

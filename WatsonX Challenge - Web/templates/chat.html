@@ -6,7 +6,7 @@
   <div class="chat-header">
     <h1 class="page-title">💬 AI Assistant</h1>
     <div class="chat-header-right">
-      <span class="badge badge-groq" id="modelBadge">Powered by IBM Granite · watsonx.ai</span>
+      <span class="badge badge-granite" id="modelBadge">Powered by IBM Granite · watsonx.ai</span>
       <button class="btn btn-sm btn-outline" onclick="clearChat()">Clear</button>
     </div>
   </div>
@@ -58,10 +58,10 @@ async function sendMsg() {
     const data = await r.json();
     typing.remove();
     // Update model badge to reflect which LLM answered
-    if (data.model === 'granite') {
+    if (data.model === 'ica') {
+      document.getElementById('modelBadge').textContent = 'Powered by IBM Consulting Advantage · ICA 1.0';
+    } else {
       document.getElementById('modelBadge').textContent = 'Powered by IBM Granite · watsonx.ai';
-    } else if (data.model === 'groq') {
-      document.getElementById('modelBadge').textContent = 'Powered by Groq · Llama 3.3 70B';
     }
     const msgDiv = appendMsg('assistant', data.reply);
     history.push({ role: 'user',      content: msg });

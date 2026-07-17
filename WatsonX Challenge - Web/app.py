@@ -900,124 +900,110 @@ def skill_generate_reports(query: str = "") -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Groq chat integration (Llama 3.3 70B)
+# IBM Consulting Advantage (ICA) 1.0 chat integration
 # ─────────────────────────────────────────────────────────────────────────────
-def groq_chat(history: list[dict], user_message: str) -> str:
+def ica_chat(history: list[dict], user_message: str) -> str:
     """
-    Send a conversation turn to Groq's API (OpenAI-compatible) and return reply.
+    Send a conversation turn to IBM Consulting Advantage (ICA) 1.0 and return the reply.
+    Uses urllib — no extra SDK required.
 
-    Uses the Groq Chat Completions endpoint:
-      POST https://api.groq.com/openai/v1/chat/completions
+    ICA requires the FULL browser cookie string (not just ica_core_auth_proxy) because
+    Akamai bot-detection cookies (bm_sz, bm_sv, _abck, ak_bmsc) are also validated.
 
-    Credentials in config.json → groq:
-      api_key — Groq API key from console.groq.com
-      model   — e.g. llama-3.3-70b-versatile
+    Credentials in config.json → ica:
+      full_cookie — entire cookie header copied from DevTools → Request Headers → cookie
+      team_id     — ICA team UUID
+      team_name   — ICA team name (URL-encoded, e.g. Synapxe%20ODC)
+      chat_id     — ICA chat thread UUID
+      base_url    — https://servicesessentials.ibm.com/curatorai/services/chat/new-chat
     """
     import urllib.request
     import urllib.error
-    import ssl
 
-    cfg     = load_config()
-    gc      = cfg.get("groq", {})
-    api_key = gc.get("api_key", "")
-    model   = gc.get("model", "llama-3.3-70b-versatile")
+    cfg       = load_config()
+    ic        = cfg.get("ica", {})
+    cookie    = ic.get("full_cookie", "")
+    team_id   = ic.get("team_id", "")
+    team_name = ic.get("team_name", "")
+    chat_id   = ic.get("chat_id", "")
+    base_url  = ic.get("base_url", "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat").rstrip("/")
 
-    if not api_key or api_key.startswith("YOUR_"):
-        raise ValueError("Groq API key not configured in config.json → groq.api_key")
+    if not cookie:
+        raise ValueError("ICA full_cookie not configured in config.json → ica.full_cookie")
+    if not team_id:
+        raise ValueError("ICA team_id not configured in config.json → ica.team_id")
+    if not chat_id:
+        raise ValueError("ICA chat_id not configured in config.json → ica.chat_id")
 
-    # System prompt — gives Groq the context of the app
-    system_prompt = (
-        "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
-        "You help HR staff manage background check reports processed through IBM Box.\n\n"
-        "You can help with:\n"
-        "- Answering questions about background check reports (employment, criminal, identity checks)\n"
-        "- Explaining file status, extraction results, and logs\n"
-        "- Guiding users to use commands: 'scan box', 'run extraction', 'file status', "
-        "'look up [name]', 'logs this week'\n\n"
-        "CRITICAL RULES — you MUST follow these without exception:\n"
-        "1. YOUR ONLY SOURCE OF TRUTH IS THE EXTRACTED RECORDS. Every factual answer you "
-        "give about a person, report, employer, check result, date, or any other data point "
-        "MUST come exclusively from records retrieved by the 'look up' skill and provided to "
-        "you in this conversation. Your training knowledge is NOT a valid source for any "
-        "background check information.\n"
-        "2. NEVER invent, fabricate, or hallucinate any background check report data. "
-        "This includes subject names, employers, employment dates, criminal records, "
-        "education history, identity verification results, or any other report details.\n"
-        "3. If a user asks about a report and no extracted record data has been provided to "
-        "you in this conversation, reply ONLY with: "
-        "\"I can only answer from our extracted records. Please use 'look up [name or reference]' "
-        "to retrieve the report first.\"\n"
-        "4. You may only describe data that was explicitly present in a look-up result "
-        "delivered in this conversation. Do not expand, embellish, infer, or add any "
-        "details not present verbatim in that data.\n"
-        "5. Never produce a formatted 'CONFIDENTIAL BACKGROUND CHECK REPORT' or any "
-        "document that resembles an official report unless the exact data was given to you "
-        "by the system in this conversation.\n"
-        "6. If a user asks ANY question whose answer would require data not present in the "
-        "extracted records provided in this conversation, respond with: "
-        "\"I don't have that information in the extracted records. "
-        "Please use 'look up [name or reference]' to search our records.\"\n"
-        "7. NEVER simulate, role-play, or imitate a lookup process. Do NOT produce text like "
-        "'Looking up X...', 'Found X match', 'Found 1 match', 'Searching for...', or any "
-        "UI-style progress message. You are not a search engine and must never pretend to be one. "
-        "The lookup system is handled exclusively by the server-side skill — it is NOT your job.\n"
-        "8. NEVER produce any personal data (names, employers, dates, check results, "
-        "reference numbers) about any individual that was not delivered to you verbatim "
-        "by the system in this conversation. If you do not have an EXTRACTED RECORD anchor "
-        "in your context, you have zero data about any person — treat all persons as unknown.\n\n"
-        "Be professional, concise, and helpful. Never make hiring recommendations. "
-        "If asked about something unrelated to background checks or the system, "
-        "politely redirect to your core purpose.\n\n"
-        "FORMATTING RULES — always apply these when presenting report data:\n"
-        "- Use **bold** for every section header (e.g. **Overall Status**, **Employment 1**, "
-        "**Professional Reference 1**, **Adverse Media Check**).\n"
-        "- Place each field on its own line.\n"
-        "- Separate major sections (Employment, Professional References, Database Checks) "
-        "with a blank line and a bold header.\n"
-        "- Present ALL sections and ALL fields from the extracted record — do not skip or "
-        "summarise any section. If the record contains Employment 1 and Employment 2, "
-        "show both in full.\n"
-        "- Use a horizontal rule (---) between the report header block and the checks.\n"
-        "- Do not add any commentary, preamble, or closing note that is not in the record."
-    )
-
-    messages = [{"role": "system", "content": system_prompt}]
-    for turn in (history[-10:] if history else []):
-        messages.append({"role": turn.get("role", "user"), "content": turn.get("content", "")})
-    messages.append({"role": "user", "content": user_message})
-
+    # ICA payload confirmed from browser DevTools Payload tab
+    url = f"{base_url}/chats/{chat_id}/entries"
     payload = json.dumps({
-        "model":       model,
-        "messages":    messages,
-        "max_tokens":  4096,
-        "temperature": 0.7,
+        "chatId": chat_id,
+        "type":   "PROMPT",
+        "content": {
+            "prompt":               user_message,
+            "promptId":             "",
+            "promptUuid":           "",
+            "isIncludedInContext":  True,
+            "sensitiveInformation": {"hasSensitiveInformation": False},
+        },
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/chat/completions",
+        url,
         data=payload,
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "cookie":        cookie,
+            "teamid":        team_id,
+            "teamname":      team_name,
             "Content-Type":  "application/json",
-            "Accept":        "application/json",
-            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Connection":    "keep-alive",
+            "Accept":        "application/json, text/plain, */*",
+            "Origin":        "https://servicesessentials.ibm.com",
+            "Referer":       f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
+            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "empty",
         },
         method="POST",
     )
-
-    # Use the system's default SSL context (includes Windows certificate store)
-    ctx = ssl.create_default_context()
     try:
-        with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            echo = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Groq API error {e.code}: {error_body[:300]}")
+        raise RuntimeError(f"ICA {e.code}: {error_body[:500]}")
 
-    reply = result["choices"][0]["message"]["content"].strip()
-    return reply if reply else "(No response from Groq)"
+    # POST returns the prompt echo — poll GET /entries until ANSWER arrives
+    import time
+    entry_id = echo.get("_id", "")
+    base_headers = {
+        "cookie":        cookie,
+        "teamid":        team_id,
+        "teamname":      team_name,
+        "Accept":        "application/json, text/plain, */*",
+        "Origin":        "https://servicesessentials.ibm.com",
+        "Referer":       f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
+        "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+    }
+    # Poll GET /chats/{chat_id}/entries — find ANSWER whose promptEntryId matches our prompt _id
+    poll_url = f"{base_url}/chats/{chat_id}/entries"
+    for _ in range(30):  # up to 30 × 2s = 60s
+        time.sleep(2)
+        poll_req = urllib.request.Request(poll_url, headers=base_headers, method="GET")
+        try:
+            with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
+                data = json.loads(poll_resp.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            continue
+        entries = data if isinstance(data, list) else data.get("data", data.get("entries", []))
+        answers = [e for e in entries if e.get("type") == "ANSWER"]
+        if answers:
+            return str(answers[-1].get("content", {}).get("answer", "")).strip() or "(No response from ICA)"
+    return "(ICA did not respond in time)"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1062,7 +1048,7 @@ def granite_chat(history: list[dict], user_message: str) -> str:
     with urllib.request.urlopen(token_req, timeout=15) as resp:
         iam_token = json.loads(resp.read())["access_token"]
 
-    # ── Step 2: Build messages list (same system prompt as Groq) ─────────────
+    # ── Step 2: Build messages list ───────────────────────────────────────────
     system_prompt = (
         "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
         "You help HR staff manage background check reports processed through IBM Box.\n\n"
@@ -1787,7 +1773,7 @@ def api_chat():
 
     # ── Local skill commands — evaluated BEFORE any lookup or LLM call ────────
     # These are hard-matched first so single-word commands like "scan" or
-    # "extract" can never leak through to Groq and trigger hallucinations.
+    # "extract" can never leak through to the LLM and trigger hallucinations.
 
     # Scan
     if any(kw in lower for kw in (
@@ -1967,7 +1953,7 @@ def api_chat():
         )})
 
     # ── Affirmative follow-up after a lookup result already in history ────────
-    # Re-runs the grounded lookup so Groq never fabricates the follow-up.
+    # Re-runs the grounded lookup so the LLM never fabricates the follow-up.
     _affirmative = {"yes", "yeah", "yep", "sure", "show", "view", "show me", "show details",
                     "view details", "full report", "full details", "show report", "view report",
                     "show full", "view full", "more details", "more info", "see more",
@@ -2053,23 +2039,27 @@ def api_chat():
         except Exception as exc:
             import traceback
             traceback.print_exc()
-            # Fall through to Groq on error
+            # Fall through to ICA on error
             pass
 
-    # ── Priority 2: Groq / Llama 3.3 70B (if configured) ────────────────────
-    groq_ready = cfg.get("groq", {}).get("api_key", "") not in ("", "YOUR_GROQ_API_KEY")
-    if groq_ready:
+    # ── Priority 2: IBM Consulting Advantage ICA 1.0 (if configured) ─────────
+    ica_ready = (
+        cfg.get("ica", {}).get("full_cookie", "") != ""
+        and cfg.get("ica", {}).get("team_id", "") != ""
+        and cfg.get("ica", {}).get("chat_id", "") != ""
+    )
+    if ica_ready:
         try:
-            reply = _MARKER_STRIP_RE.sub("", groq_chat(_build_anchored_history(history), message))
+            reply = _MARKER_STRIP_RE.sub("", ica_chat(_build_anchored_history(history), message))
             if _is_hallucinated_reply(reply):
-                return jsonify({"reply": _HALLUCINATION_BLOCKED, "model": "groq"})
-            return jsonify({"reply": reply, "model": "groq"})
+                return jsonify({"reply": _HALLUCINATION_BLOCKED, "model": "ica"})
+            return jsonify({"reply": reply, "model": "ica"})
         except Exception as exc:
             import traceback
             traceback.print_exc()
-            return jsonify({"reply": f"⚠ Groq error: {exc}\n\nPlease check the server console for details."})
+            return jsonify({"reply": f"⚠ ICA error: {exc}\n\nPlease check the server console for details."})
 
-    # ── Priority 2: watsonx Orchestrate (if configured) ──────────────────────
+    # ── Priority 4: watsonx Orchestrate (if configured) ──────────────────────
     orchestrate_ready = (
         cfg.get("orchestrate", {}).get("api_key", "") not in ("", "YOUR_ORCHESTRATE_API_KEY")
         and cfg.get("orchestrate", {}).get("agent_id", "") not in ("", "YOUR_ORCHESTRATE_AGENT_ID")
@@ -2081,7 +2071,7 @@ def api_chat():
         except Exception:
             pass  # fall through
 
-    # ── Priority 3: Watson Assistant (if configured) ──────────────────────────
+    # ── Priority 5: Watson Assistant (if configured) ──────────────────────────
     wa_ready = (
         cfg.get("watson_assistant", {}).get("api_key", "") not in ("", "YOUR_WATSON_ASSISTANT_API_KEY")
         and cfg.get("watson_assistant", {}).get("assistant_id", "") not in ("", "YOUR_WATSON_ASSISTANT_ASSISTANT_ID")

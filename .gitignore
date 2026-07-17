@@ -41,3 +41,10 @@ extractor.log
 tracking_db.json
 *.bak
 *.bak2
+
+# -- Local Folder (synced PDFs, extracted reports, archives) -------------------
+PDF Extractor V2/Local Folder/
+PDF Extractor/Local Folder/
+
+# -- ICA cookie parser (local tool only) --------------------------------------
+ICA Cookie Parser/

@@ -37,7 +37,7 @@ Clone or place the repository so both project folders sit side-by-side:
   3. A Box.com account with a configured Box App
      → See the "Box Credentials" section below.
 
-  4. IBM Cloud account (for watsonx.ai / watsonx Orchestrate / Groq)
+  4. IBM Cloud account (for watsonx.ai / watsonx Orchestrate / ICA)
      → See the "API Credentials" section below.
 
 --------------------------------------------------------------------------------
@@ -69,11 +69,6 @@ Clone or place the repository so both project folders sit side-by-side:
     If you have NOT installed them already, install both together:
 
     pip install flask==3.0.3 PyMuPDF==1.24.5 python-docx==1.1.2 openpyxl==3.1.5 boxsdk==3.9.2
-
-  --- Optional: Groq (free AI fallback) ---
-
-    No extra package needed — the app uses the built-in urllib module
-    to call the Groq REST API. Just add your API key to config.json.
 
 --------------------------------------------------------------------------------
   BOX CREDENTIALS — Required for Both Apps
@@ -107,7 +102,7 @@ Clone or place the repository so both project folders sit side-by-side:
        "box.output_folder_id" — folder where exports are uploaded
 
 --------------------------------------------------------------------------------
-  API CREDENTIALS — watsonx, Groq, Watson Assistant
+  API CREDENTIALS — watsonx, ICA, Watson Assistant
 --------------------------------------------------------------------------------
 
   --- IBM watsonx.ai (primary AI model) ---
@@ -120,11 +115,15 @@ Clone or place the repository so both project folders sit side-by-side:
        "watsonx.project_id" — your watsonx.ai project ID
        "watsonx.service_url"— e.g. https://eu-de.ml.cloud.ibm.com
 
-  --- Groq (free AI fallback — no IBM account needed) ---
+  --- IBM Consulting Advantage ICA 1.0 (web app AI fallback, optional) ---
 
-  1. Sign up at https://console.groq.com (free tier available)
-  2. Create an API key
-  3. Paste it into config.json → "groq.api_key"
+  1. Sign in to your ICA tenant → Settings → API Access → Generate API Key
+  2. Copy your Tenant ID from the ICA URL subdomain
+  3. In ICA: AI Assistants → Create Assistant → copy the Assistant ID
+  4. Open "WatsonX Challenge - Web\config.json" and fill in:
+       "ica.api_key"      — IBM Cloud IAM API key (same key as watsonx.ai)
+       "ica.tenant_id"    — your ICA tenant ID
+       "ica.assistant_id" — your ICA Assistant ID
 
   --- IBM watsonx Orchestrate (web app AI backbone, optional) ---
 
@@ -136,8 +135,8 @@ Clone or place the repository so both project folders sit side-by-side:
        "orchestrate.instance_url" — Orchestrate instance URL
        "orchestrate.agent_id"     — your Orchestrate Agent ID
 
-  ℹ  If Orchestrate is not configured, the chat assistant automatically
-     falls back to Groq (Llama 3.3 70B) — so the app still works.
+  ℹ  If watsonx.ai is not configured, the chat assistant falls back to
+     ICA 1.0 → Orchestrate → Watson Assistant → local help text.
 
   --- IBM Watson Assistant (optional, alternative chat backend) ---
 
@@ -205,7 +204,7 @@ Clone or place the repository so both project folders sit side-by-side:
   [ ] pip install -r "PDF Extractor/requirements.txt"
   [ ] pip install -r "WatsonX Challenge - Web/requirements.txt"
   [ ] "PDF Extractor\config.json"              — Box OAuth2 + watsonx credentials
-  [ ] "WatsonX Challenge - Web\config.json"    — Box JWT + watsonx + Groq credentials
+  [ ] "WatsonX Challenge - Web\config.json"    — Box JWT + watsonx + ICA credentials
   [ ] "WatsonX Challenge - Web\box_jwt_config.json" — Box JWT app credentials file
   [ ] Both project folders are inside the SAME parent directory
 

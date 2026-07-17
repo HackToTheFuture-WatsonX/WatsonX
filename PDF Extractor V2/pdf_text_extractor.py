@@ -114,7 +114,7 @@ def load_config() -> dict:
             f"config.json not found at {CONFIG_PATH}. "
             "Please create it before running the extractor."
         )
-    with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+    with open(CONFIG_PATH, "r", encoding="utf-8-sig") as fh:
         cfg = json.load(fh)
     log.info("Config loaded from %s", CONFIG_PATH)
     return cfg

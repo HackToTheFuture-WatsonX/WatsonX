@@ -46,6 +46,13 @@ import importlib.util
 import re as _re_ai
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# App version / build stamp  — bump APP_VERSION on every release
+# ─────────────────────────────────────────────────────────────────────────────
+APP_VERSION  = "2.1.0"
+BUILD_DATE   = "2026-07-18"
+BUILD_PATCH  = "patch-07"           # increment each hotfix: patch-01, patch-02 …
+
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
 BASE_DIR        = Path(__file__).parent.resolve()
@@ -58,7 +65,7 @@ LOG_HISTORY_DIR = BASE_DIR / "Log History"
 # Config loader helper (used outside frames too)
 # ─────────────────────────────────────────────────────────────────────────────
 def _read_config() -> dict:
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
@@ -75,6 +82,15 @@ def _extracted_folder() -> Path:
     """Return the resolved Extracted sub-folder path from config."""
     cfg  = _read_config()
     rel  = cfg.get("local", {}).get("extracted_folder", "Local Folder/Extracted")
+    path = Path(rel) if Path(rel).is_absolute() else BASE_DIR / rel
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _archive_folder() -> Path:
+    """Return the resolved Archive sub-folder path from config (Local Folder/Archive)."""
+    cfg  = _read_config()
+    rel  = cfg.get("local", {}).get("archive_folder", "Local Folder/Archive")
     path = Path(rel) if Path(rel).is_absolute() else BASE_DIR / rel
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -109,7 +125,7 @@ FONT_MONO  = ("Consolas", 9)
 # ─────────────────────────────────────────────────────────────────────────────
 def load_tracking() -> dict:
     if TRACKING_PATH.exists():
-        with open(TRACKING_PATH, "r", encoding="utf-8") as f:
+        with open(TRACKING_PATH, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     return {"files": {}}
 
@@ -120,21 +136,39 @@ def save_tracking(db: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Box client factory (Developer Token / OAuth2)
+# Box client factory (JWT / Service Account — tokens auto-rotate, never expire)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_jwt_path(box_cfg: dict) -> Path:
+    """Return the resolved path to the Box JWT config JSON file, or raise FileNotFoundError."""
+    jwt_filename = box_cfg.get("jwt_config_file", "box_jwt_config.json")
+    candidates = [
+        Path(__file__).parent / jwt_filename,
+        Path(__file__).parent.parent / "WatsonX Challenge - Web" / jwt_filename,
+        Path(__file__).parent / ".." / "WatsonX Challenge - Web" / jwt_filename,
+    ]
+    jwt_path = next((p.resolve() for p in candidates if p.exists()), None)
+    if jwt_path is None:
+        raise FileNotFoundError(
+            f"Box JWT config file '{jwt_filename}' not found.\n"
+            f"Looked in: {[str(p.resolve()) for p in candidates]}\n"
+            "Download it from app.box.com/developers/console → your app → Configuration → "
+            "App Settings → Generate a Public/Private Keypair, then save the JSON next to config.json."
+        )
+    return jwt_path
+
+
 def get_box_client():
     """
-    Build a Box client from config.json using OAuth2 Developer Token.
+    Build a Box client from config.json using JWT (Service Account).
+    JWT tokens are issued and rotated automatically — no manual refresh needed.
     Returns (client, cfg).
     """
-    from boxsdk import OAuth2, Client
-    cfg  = _read_config()
-    box  = cfg["box"]
-    auth = OAuth2(
-        client_id=box["client_id"],
-        client_secret=box["client_secret"],
-        access_token=box["access_token"],
-    )
+    from boxsdk import JWTAuth, Client
+    cfg      = _read_config()
+    box      = cfg["box"]
+    jwt_path = _resolve_jwt_path(box)
+    auth     = JWTAuth.from_settings_file(str(jwt_path))
     return Client(auth), cfg
 
 
@@ -199,15 +233,18 @@ def sync_box_to_local(progress_cb=None) -> tuple[int, int, list[str]]:
         if progress_cb:
             progress_cb(msg)
 
+    # Guard: verify JWT config file exists before attempting network call
+    try:
+        jwt_path = _resolve_jwt_path(box_cfg)
+    except FileNotFoundError as exc:
+        errors.append(str(exc))
+        return 0, 0, errors
+
     _cb(f"Connecting to Box (folder {folder_id})…")
 
     try:
-        from boxsdk import OAuth2, Client
-        auth = OAuth2(
-            client_id=box_cfg["client_id"],
-            client_secret=box_cfg["client_secret"],
-            access_token=box_cfg["access_token"],
-        )
+        from boxsdk import JWTAuth, Client
+        auth   = JWTAuth.from_settings_file(str(jwt_path))
         client = Client(auth)
     except Exception as exc:
         errors.append(f"Box auth failed: {exc}")
@@ -371,12 +408,11 @@ class PDFExtractorAppV2(tk.Tk):
         ttk.Separator(sidebar, orient="horizontal").pack(fill="x", padx=12)
 
         nav_items = [
-            ("  Home",           "home"),
-            ("  Sync Folder",    "sync"),
-            ("  Scan Folder",    "scan"),
-            ("  Insights",       "insights"),
-            ("  Extract Files",  "extract"),
-            ("  AI Assistant",   "chat"),
+            ("  Home",                    "home"),
+            ("  Scan Local Folder",       "scan"),
+            ("  Sync Box to Local",       "sync"),
+            ("  Extract Files",           "extract"),
+            ("  Chat with AI Assistant",  "chat"),
         ]
         self._nav_btns = {}
         for label, key in nav_items:
@@ -394,11 +430,24 @@ class PDFExtractorAppV2(tk.Tk):
             btn.pack(fill="x")
             self._nav_btns[key] = btn
 
+        # ── Version / patch badge ─────────────────────────────────────────────
+        ver_frame = tk.Frame(sidebar, bg="#0F2030",
+                             highlightbackground="#1E3A50", highlightthickness=1)
+        ver_frame.pack(side="bottom", fill="x", padx=10, pady=10)
         tk.Label(
-            sidebar, text="v2.0.0",
-            bg=CLR_SIDEBAR, fg="#7090B0",
-            font=FONT_SMALL,
-        ).pack(side="bottom", pady=8)
+            ver_frame,
+            text=f"v{APP_VERSION}  ·  {BUILD_PATCH}",
+            bg="#0F2030", fg="#5BA4CF",
+            font=("Consolas", 9, "bold"),
+            pady=5,
+        ).pack()
+        tk.Label(
+            ver_frame,
+            text=BUILD_DATE,
+            bg="#0F2030", fg="#3D6E8A",
+            font=("Consolas", 8),
+            pady=2,
+        ).pack()
 
         # ── Content area ──────────────────────────────────────────────────────
         self._content = tk.Frame(self, bg=CLR_BG)
@@ -407,11 +456,11 @@ class PDFExtractorAppV2(tk.Tk):
         self._frames = {}
         for key, cls in [
             ("home",     HomeFrame),
-            ("sync",     SyncFrame),
             ("scan",     ScanFolderFrame),
-            ("insights", InsightsFrame),
+            ("sync",     SyncFrame),
             ("extract",  ExtractFrame),
             ("chat",     ChatFrame),
+            ("insights", InsightsFrame),   # kept registered, accessible via Home card
         ]:
             frame = cls(self._content, self)
             frame.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -443,27 +492,25 @@ class HomeFrame(tk.Frame):
 
         ttk.Separator(self, orient="horizontal").pack(fill="x", padx=80, pady=20)
 
-        # ── Row 1: Sync / Scan / Insights  ───────────────────────────────────
+        # ── Row 1: Scan → Sync (process flow step 1 & 2) ─────────────────────
         row1 = tk.Frame(self, bg=CLR_BG)
         row1.pack()
         for icon, title, desc, key in [
-            ("[SYNC]",    "Sync Folder",
-             "Download PDFs from Box\ninto the Local Folder.",    "sync"),
-            ("[SCAN]",    "Scan Folder",
-             "Scan Local Folder for PDFs\nand view their status.", "scan"),
-            ("[CHART]",   "Insights",
-             "Charts and statistics on\nextraction progress.",    "insights"),
+            ("[SCAN]",    "Scan Local Folder",
+             "Scan Local Folder for PDFs\nand view their status.",   "scan"),
+            ("[SYNC]",    "Sync Box to Local",
+             "Download PDFs from Box\ninto the Local Folder.",       "sync"),
         ]:
             self._make_card(row1, icon, title, desc, key)
 
-        # ── Row 2: Extract / AI Assistant ─────────────────────────────────────
+        # ── Row 2: Extract → Chat (process flow step 3 & 4) ──────────────────
         row2 = tk.Frame(self, bg=CLR_BG)
         row2.pack(pady=(0, 10))
         for icon, title, desc, key in [
             ("[EXTRACT]", "Extract Files",
              "Run extraction on Local Folder\nand upload outputs to Box.", "extract"),
-            ("[AI]",      "AI Assistant",
-             "Chat with WatsonX AI to query\nreports or trigger actions.", "chat"),
+            ("[AI]",      "Chat with AI Assistant",
+             "Chat with IBM Consulting\nAdvantage AI assistant.",          "chat"),
         ]:
             self._make_card(row2, icon, title, desc, key)
 
@@ -719,24 +766,30 @@ class ScanFolderFrame(tk.Frame):
         """
         Walk the Local Folder, find all .pdf files, and register them in
         tracking_db.json as Pending (preserving historical extraction info).
-        Skips anything inside the Extracted sub-folder so extracts are not
-        re-queued for extraction.
+        Skips anything inside the Extracted or Archive sub-folders so that
+        already-processed PDFs are not re-queued.
         """
         try:
             local_folder     = _local_folder()
             extracted_folder = _extracted_folder()
+            archive_folder   = _archive_folder()
             db               = load_tracking()
             found            = 0
 
             for pdf_path in local_folder.rglob("*.pdf"):
-                # Do not scan files that are already inside the Extracted folder
+                # Skip files inside Extracted/ or Archive/
                 try:
                     pdf_path.relative_to(extracted_folder)
-                    continue   # skip — this PDF lives inside Extracted/
+                    continue
+                except ValueError:
+                    pass
+                try:
+                    pdf_path.relative_to(archive_folder)
+                    continue
                 except ValueError:
                     pass
 
-                rel_key = str(pdf_path.relative_to(local_folder))
+                rel_key  = str(pdf_path.relative_to(local_folder))
                 existing = db.get("files", {}).get(rel_key, {})
                 db["files"][rel_key] = {
                     "name":           pdf_path.name,
@@ -746,6 +799,18 @@ class ScanFolderFrame(tk.Frame):
                     "local_path":     str(pdf_path),
                 }
                 found += 1
+
+            # ── Purge stale entries ───────────────────────────────────────────
+            # Remove any tracked record whose source PDF no longer exists in
+            # Local Folder (and is not sitting in Archive either).
+            stale = []
+            for rel_key, info in db.get("files", {}).items():
+                src  = Path(info.get("local_path", local_folder / rel_key))
+                arch = Path(info.get("archive_path", ""))
+                if not src.exists() and not arch.exists():
+                    stale.append(rel_key)
+            for rel_key in stale:
+                del db["files"][rel_key]
 
             save_tracking(db)
             self.app.db = db
@@ -1065,10 +1130,11 @@ class ExtractFrame(tk.Frame):
         extracted_root   = _extracted_folder()
 
         # Sub-directories inside Extracted/
-        word_root = extracted_root / "Word Extracts"
-        csv_root  = extracted_root / "CSV Extracts"
-        json_root = extracted_root / "JSON File Extracts"
-        for d in (word_root, csv_root, json_root):
+        word_root    = extracted_root / "Word Extracts"
+        csv_root     = extracted_root / "CSV Extracts"
+        json_root    = extracted_root / "JSON File Extracts"
+        archive_root = _archive_folder()
+        for d in (word_root, csv_root, json_root, archive_root):
             d.mkdir(parents=True, exist_ok=True)
 
         # ── Load tracking DB and collect Pending files ────────────────────────
@@ -1158,15 +1224,29 @@ class ExtractFrame(tk.Frame):
                 else:
                     upload_status = "Box upload not configured (set output_folder_id in config.json)"
 
-                # Step 6 — Mark Completed in tracking DB
+                # Step 6 — Move source PDF to Archive folder
+                archive_dest = archive_root / fname
+                # Avoid name collision in Archive
+                if archive_dest.exists():
+                    stem = Path(fname).stem
+                    suffix = Path(fname).suffix
+                    archive_dest = archive_root / f"{stem}_{now.strftime('%Y%m%d%H%M%S')}{suffix}"
+                try:
+                    import shutil as _shutil
+                    _shutil.move(str(local_path), str(archive_dest))
+                except Exception as _mv_exc:
+                    archive_dest = local_path   # keep original path in log if move fails
+
+                # Step 7 — Mark Completed in tracking DB
                 db["files"][rel_key].update({
                     "name":           fname,
                     "status":         "Completed",
                     "last_extracted": now.isoformat(timespec="seconds"),
                     "ref_number":     ref_number,
+                    "archive_path":   str(archive_dest),
                 })
 
-                # Step 7 — Write extraction log
+                # Step 8 — Write extraction log
                 log_lines = [
                     "Background Check Report Automation V2 — Extraction Log",
                     "=" * 60,
@@ -1178,9 +1258,10 @@ class ExtractFrame(tk.Frame):
                     "",
                     "Outputs",
                     "-" * 40,
-                    f"Word  : {word_path}",
-                    f"Excel : {csv_path}",
-                    f"JSON  : {json_path}",
+                    f"Word    : {word_path}",
+                    f"Excel   : {csv_path}",
+                    f"JSON    : {json_path}",
+                    f"Archive : {archive_dest}",
                     "",
                     f"Box Upload : {upload_status}",
                 ]
@@ -1240,6 +1321,31 @@ def _status_icon(val: str) -> str:
     return "🔵"
 
 
+def _name_matches(query_lower: str, stored_name: str) -> bool:
+    """
+    Match a free-text query against a stored name that may be in 'Last, First' format.
+    Tries: substring match, token-set match (all query tokens present in name tokens),
+    and reversed 'First Last' form of the stored name.
+    """
+    stored_lower = stored_name.lower()
+    # Direct substring
+    if query_lower in stored_lower:
+        return True
+    # Reverse 'Last, First Middle' → 'first middle last' and try again
+    if "," in stored_lower:
+        parts   = [p.strip() for p in stored_lower.split(",", 1)]
+        # parts[0]=last, parts[1]=first/middle
+        reversed_name = f"{parts[1]} {parts[0]}".strip()
+        if query_lower in reversed_name:
+            return True
+        # Also check all query tokens appear somewhere in the full name tokens
+        name_tokens  = set(stored_lower.replace(",", " ").split())
+        query_tokens = set(query_lower.split())
+        if query_tokens and query_tokens.issubset(name_tokens):
+            return True
+    return False
+
+
 def skill_lookup_report(query: str) -> str:
     """Search extracted JSON reports in Local Folder by subject name or case ref."""
     if not query.strip():
@@ -1251,16 +1357,20 @@ def skill_lookup_report(query: str) -> str:
 
     def _ingest(report: dict):
         s    = report.get("report_summary", {})
-        name = s.get("subject_name", "").lower()
-        ref  = s.get("case_reference", "").lower()
-        if q_lower not in name and q_lower not in ref:
+        name = s.get("subject_name", "")
+        ref  = s.get("case_reference", "").strip()
+        # Deduplicate key: normalise ref to lowercase; if two files share the
+        # same ref (e.g. v1/v2/v3 re-extracts) keep only the most recent one.
+        key  = ref.lower() or name.lower()
+        if not _name_matches(q_lower, name) and q_lower not in key:
             return
-        existing = best_by_ref.get(ref)
+        existing = best_by_ref.get(key)
         if existing is None:
-            best_by_ref[ref] = report
+            best_by_ref[key] = report
         else:
-            if report.get("extracted_at", "") > existing.get("extracted_at", ""):
-                best_by_ref[ref] = report
+            # Keep whichever was extracted most recently
+            if (report.get("extracted_at", "") or "") > (existing.get("extracted_at", "") or ""):
+                best_by_ref[key] = report
 
     if json_dir.exists():
         for jp in json_dir.rglob("*.json"):
@@ -1273,7 +1383,11 @@ def skill_lookup_report(query: str) -> str:
     if not best_by_ref:
         return f"No reports found matching '{query}'."
 
-    matches = list(best_by_ref.values())
+    # Sort by subject name for consistent ordering; all unique refs are shown
+    matches = sorted(
+        best_by_ref.values(),
+        key=lambda r: r.get("report_summary", {}).get("subject_name", "").lower(),
+    )
 
     OTHER_CHECK_ORDER = [
         "Adverse Media Check", "Global Sanctions", "Bankruptcy Check",
@@ -1281,8 +1395,7 @@ def skill_lookup_report(query: str) -> str:
         "Professional License Qualification", "Social Media Screening",
     ]
 
-    blocks = []
-    for r in matches[:5]:
+    def _build_block(r: dict, index: int, total: int) -> str:
         s        = r.get("report_summary", {})
         subject  = s.get("subject_name", "--")
         ref_num  = s.get("case_reference", "--")
@@ -1292,6 +1405,9 @@ def skill_lookup_report(query: str) -> str:
         overall  = s.get("overall_status", "--")
 
         lines = []
+        if total > 1:
+            lines.append(f"{'─'*50}")
+            lines.append(f"Record {index} of {total}")
         lines.append(f"Subject: {subject} | Ref: {ref_num} | Delivery: {delivery}")
         if received and received.strip():
             lines.append(f"Case Received: {received}")
@@ -1359,16 +1475,19 @@ def skill_lookup_report(query: str) -> str:
                 if fv and str(fv).strip():
                     lines.append(f"    {field_key.capitalize()}: {fv}")
 
-        blocks.append("\n".join(lines))
+        return "\n".join(lines)
+
+    total = len(matches)
+    blocks = [_build_block(r, i + 1, total) for i, r in enumerate(matches)]
 
     header = ""
-    if len(matches) > 1:
+    if total > 1:
         header = (
-            f"Found {len(matches)} record(s) matching '{query}':\n"
+            f"Found {total} record(s) matching '{query}':\n"
             + "\n".join(
-                f"  • {r.get('report_summary',{}).get('subject_name','--')} "
+                f"  {i+1}. {r.get('report_summary',{}).get('subject_name','--')} "
                 f"— Ref: {r.get('report_summary',{}).get('case_reference','--')}"
-                for r in matches[:5]
+                for i, r in enumerate(matches)
             ) + "\n\n"
         )
     return header + "\n\n".join(blocks)
@@ -1425,7 +1544,8 @@ def trigger_extraction_for_chat() -> str:
     word_root        = extracted_root / "Word Extracts"
     csv_root         = extracted_root / "CSV Extracts"
     json_root        = extracted_root / "JSON File Extracts"
-    for d in (word_root, csv_root, json_root):
+    archive_root     = _archive_folder()
+    for d in (word_root, csv_root, json_root, archive_root):
         d.mkdir(parents=True, exist_ok=True)
 
     db      = load_tracking()
@@ -1433,7 +1553,20 @@ def trigger_extraction_for_chat() -> str:
                if v.get("status", "Pending") == "Pending"}
 
     if not pending:
-        return "No Pending PDF files found in Local Folder. Run Scan Folder first."
+        db    = load_tracking()
+        files = db.get("files", {})
+        total = len(files)
+        done  = sum(1 for f in files.values() if f.get("status") == "Completed")
+        if total > 0 and done == total:
+            return (
+                f"All {total} file(s) have already been extracted.\n"
+                "Use **'look up [name or reference]'** to view any report, "
+                "or **'scan'** to pick up new PDFs."
+            )
+        return (
+            "No Pending PDF files found in Local Folder.\n"
+            "Run **'scan'** first to detect new PDFs, then **'extract'** again."
+        )
 
     box_client = None
     if output_folder_id and not output_folder_id.startswith("YOUR_"):
@@ -1443,8 +1576,7 @@ def trigger_extraction_for_chat() -> str:
             pass
 
     now     = datetime.now()
-    results = [f"Extraction started at {now.strftime('%Y-%m-%d %H:%M:%S')}",
-               f"Files found: {len(pending)}", ""]
+    results = []
 
     for rel_key, info in pending.items():
         fname      = info.get("name", rel_key)
@@ -1485,10 +1617,22 @@ def trigger_extraction_for_chat() -> str:
                 except Exception as ue:
                     upload_status = f"Upload failed: {str(ue)[:80]}"
 
+            # Move source PDF to Archive
+            import shutil as _shutil
+            archive_dest = archive_root / fname
+            if archive_dest.exists():
+                stem = Path(fname).stem; suffix = Path(fname).suffix
+                archive_dest = archive_root / f"{stem}_{now.strftime('%Y%m%d%H%M%S')}{suffix}"
+            try:
+                _shutil.move(str(local_path), str(archive_dest))
+            except Exception:
+                archive_dest = local_path
+
             db["files"][rel_key].update({
                 "name": fname, "status": "Completed",
                 "last_extracted": now.isoformat(timespec="seconds"),
                 "ref_number": ref_number,
+                "archive_path": str(archive_dest),
             })
             log_lines = [
                 "Background Check Report Automation V2 — Extraction Log",
@@ -1496,19 +1640,21 @@ def trigger_extraction_for_chat() -> str:
                 f"Started: {now.strftime('%Y-%m-%d %H:%M:%S')}",
                 f"Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                 "", "Outputs", "-" * 40,
-                f"Word  : {word_path}", f"Excel : {csv_path}", f"JSON  : {json_path}",
+                f"Word    : {word_path}", f"Excel   : {csv_path}",
+                f"JSON    : {json_path}", f"Archive : {archive_dest}",
                 f"Box Upload: {upload_status}",
             ]
             log_path = write_extraction_log(ref_number, now, "\n".join(log_lines))
-            results.append(
-                f"✅  {fname}\n"
-                f"   Reference : {ref_number}\n"
-                f"   Word      : {word_path.relative_to(BASE_DIR)}\n"
-                f"   Excel     : {csv_path.relative_to(BASE_DIR)}\n"
-                f"   JSON      : {json_path.relative_to(BASE_DIR)}\n"
-                f"   Upload    : {upload_status}\n"
-                f"   Log       : {log_path.relative_to(BASE_DIR)}"
-            )
+            results.append({
+                "status":  "ok",
+                "fname":   fname,
+                "ref":     ref_number,
+                "word":    str(word_path),
+                "excel":   str(csv_path),
+                "json":    str(json_path),
+                "upload":  upload_status,
+                "archive": str(archive_dest),
+            })
         except Exception as exc:
             ref_fallback = Path(fname).stem
             db["files"][rel_key].setdefault("status", "Pending")
@@ -1520,17 +1666,27 @@ def trigger_extraction_for_chat() -> str:
                 f"Status: FAILED", "", "Error", "-" * 40, str(exc),
             ]
             log_path = write_extraction_log(ref_fallback, now, "\n".join(log_lines))
-            results.append(f"❌  {fname}\n   Error : {str(exc)[:300]}")
+            results.append({
+                "status": "error",
+                "fname":  fname,
+                "error":  str(exc)[:300],
+            })
 
     save_tracking(db)
-    completed = sum(1 for r in results if r.startswith("✅"))
-    failed    = sum(1 for r in results if r.startswith("❌"))
-    results.insert(2, f"Completed: {completed}  |  Failed: {failed}\n")
-    return "\n".join(results)
+    items = results
+    completed = sum(1 for i in items if i.get("status") == "ok")
+    failed    = sum(1 for i in items if i.get("status") == "error")
+    header    = (
+        f"Extraction started at {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Files found: {len(pending)}\n"
+        f"Completed: {completed}  |  Failed: {failed}"
+    )
+    payload = json.dumps({"header": header, "items": items})
+    return f"\u00a7LINKS\u00a7{payload}\u00a7LINKS\u00a7"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LLM helpers (identical to V1)
+# LLM integration — IBM Consulting Advantage (ICA) 1.0
 # ─────────────────────────────────────────────────────────────────────────────
 _AI_SYSTEM_PROMPT = (
     "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
@@ -1581,81 +1737,103 @@ def _load_ai_config() -> dict:
     return _read_config()
 
 
-def granite_chat(history: list[dict], user_message: str) -> str:
-    import urllib.request, urllib.error, ssl
-    cfg         = _load_ai_config()
-    wx          = cfg.get("watsonx", {})
-    api_key     = wx.get("api_key", "")
-    project_id  = wx.get("project_id", "")
-    service_url = wx.get("url", "https://us-south.ml.cloud.ibm.com").rstrip("/")
-    model       = wx.get("model_id", "ibm/granite-3-8b-instruct")
-    if not api_key or api_key.startswith("YOUR_"):
-        raise ValueError("watsonx.ai api_key not configured in config.json")
-    if not project_id or project_id.startswith("YOUR_") or project_id.startswith("ApiKey-"):
-        raise ValueError("watsonx.ai project_id not configured in config.json")
-    token_req = urllib.request.Request(
-        "https://iam.cloud.ibm.com/identity/token",
-        data=f"grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey={api_key}".encode(),
-        headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST",
-    )
-    ctx = ssl.create_default_context()
-    with urllib.request.urlopen(token_req, timeout=15, context=ctx) as resp:
-        iam_token = json.loads(resp.read())["access_token"]
-    messages = [{"role": "system", "content": _AI_SYSTEM_PROMPT}]
-    for turn in (history[-10:] if history else []):
-        messages.append({"role": turn.get("role","user"), "content": turn.get("content","")})
-    messages.append({"role": "user", "content": user_message})
-    url     = f"{service_url}/ml/v1/text/chat?version=2024-05-01"
+def ica_chat(history: list[dict], user_message: str) -> str:
+    """
+    Send a conversation turn to IBM Consulting Advantage (ICA) 1.0 and return the reply.
+    Uses urllib — no extra SDK required.
+
+    ICA requires the FULL browser cookie string (not just ica_core_auth_proxy) because
+    Akamai bot-detection cookies (bm_sz, bm_sv, _abck, ak_bmsc) are also validated.
+
+    Credentials in config.json → ica:
+      full_cookie — entire cookie header copied from DevTools → Request Headers → cookie
+      team_id     — ICA team UUID
+      team_name   — ICA team name (URL-encoded, e.g. Synapxe%20ODC)
+      chat_id     — ICA chat thread UUID
+      base_url    — https://servicesessentials.ibm.com/curatorai/services/chat/new-chat
+    """
+    import urllib.request, urllib.error
+
+    cfg          = _load_ai_config()
+    ic           = cfg.get("ica", {})
+    cookie       = ic.get("full_cookie", "")
+    team_id      = ic.get("team_id", "")
+    team_name    = ic.get("team_name", "")
+    assistant_id = ic.get("assistant_id", "")
+    chat_id      = ic.get("chat_id", "")
+    base_url  = ic.get("base_url", "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat").rstrip("/")
+
+    if not cookie:
+        raise ValueError("ICA full_cookie not configured in config.json → ica.full_cookie")
+    if not team_id:
+        raise ValueError("ICA team_id not configured in config.json → ica.team_id")
+    if not chat_id:
+        raise ValueError("ICA chat_id not configured in config.json → ica.chat_id")
+
+    # ICA payload confirmed from browser DevTools Payload tab
+    url = f"{base_url}/chats/{chat_id}/entries"
     payload = json.dumps({
-        "model_id": model, "project_id": project_id,
-        "messages": messages, "parameters": {"max_new_tokens": 2048, "temperature": 0.7},
+        "chatId": chat_id,
+        "type":   "PROMPT",
+        "content": {
+            "prompt":               user_message,
+            "promptId":             "",
+            "promptUuid":           "",
+            "isIncludedInContext":  True,
+            "sensitiveInformation": {"hasSensitiveInformation": False},
+        },
     }).encode("utf-8")
+
     req = urllib.request.Request(url, data=payload, headers={
-        "Authorization": f"Bearer {iam_token}",
-        "Content-Type": "application/json", "Accept": "application/json",
+        "cookie":        cookie,
+        "teamid":        team_id,
+        "teamname":      team_name,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json, text/plain, */*",
+        "Origin":        "https://servicesessentials.ibm.com",
+        "Referer":       f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
+        "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
     }, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            echo = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"watsonx.ai error {e.code}: {e.read().decode('utf-8','replace')[:300]}")
-    choices = result.get("choices", [])
-    reply   = choices[0].get("message",{}).get("content","").strip() if choices else ""
-    return reply if reply else "(No response from Granite)"
+        body = e.read().decode("utf-8", "replace")
+        raise RuntimeError(f"ICA {e.code}: {body[:500]}")
 
-
-def groq_chat(history: list[dict], user_message: str) -> str:
-    import urllib.request, urllib.error, ssl
-    cfg     = _load_ai_config()
-    gc      = cfg.get("groq", {})
-    api_key = gc.get("api_key", "")
-    model   = gc.get("model", "llama-3.3-70b-versatile")
-    if not api_key or api_key.startswith("YOUR_"):
-        raise ValueError("Groq API key not configured in config.json")
-    messages = [{"role": "system", "content": _AI_SYSTEM_PROMPT}]
-    for turn in (history[-10:] if history else []):
-        messages.append({"role": turn.get("role","user"), "content": turn.get("content","")})
-    messages.append({"role": "user", "content": user_message})
-    payload = json.dumps({
-        "model": model, "messages": messages,
-        "max_tokens": 4096, "temperature": 0.7,
-    }).encode("utf-8")
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/chat/completions", data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json", "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        }, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Groq API error {e.code}: {e.read().decode('utf-8','replace')[:300]}")
-    reply = result["choices"][0]["message"]["content"].strip()
-    return reply if reply else "(No response from Groq)"
+    # POST returns the prompt echo — poll GET /entries until ANSWER arrives
+    entry_id = echo.get("_id", "")
+    base_headers = {
+        "cookie":        cookie,
+        "teamid":        team_id,
+        "teamname":      team_name,
+        "Accept":        "application/json, text/plain, */*",
+        "Origin":        "https://servicesessentials.ibm.com",
+        "Referer":       f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
+        "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+    }
+    # Poll GET /chats/{chat_id}/entries — find ANSWER whose promptEntryId matches our prompt _id
+    import time
+    poll_url = f"{base_url}/chats/{chat_id}/entries"
+    for _ in range(30):  # up to 30 × 2s = 60s
+        time.sleep(2)
+        poll_req = urllib.request.Request(poll_url, headers=base_headers, method="GET")
+        try:
+            with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
+                data = json.loads(poll_resp.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            continue
+        entries = data if isinstance(data, list) else data.get("data", data.get("entries", []))
+        answers = [e for e in entries if e.get("type") == "ANSWER"]
+        if answers:
+            return str(answers[-1].get("content", {}).get("answer", "")).strip() or "(No response from ICA)"
+    return "(ICA did not respond in time)"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1716,25 +1894,100 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
 # Step 4  log keywords → get_log_history()
 # Steps 5-11 identical to V1
 # ─────────────────────────────────────────────────────────────────────────────
+def trigger_sync_for_chat() -> str:
+    """Run the Box → Local Folder sync synchronously and return a text summary."""
+    try:
+        downloaded, skipped, errors = sync_box_to_local()
+        lines = [f"🔄 Sync complete — **{downloaded}** downloaded, **{skipped}** already existed, **{len(errors)}** error(s)."]
+        if errors:
+            lines.append("")
+            for e in errors:
+                lines.append(f"  ⚠ {e}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"⚠ Sync failed: {str(exc)[:300]}"
+
+
+def trigger_scan_for_chat() -> str:
+    """Run the Local Folder scan synchronously and return a text summary."""
+    try:
+        local_folder     = _local_folder()
+        extracted_folder = _extracted_folder()
+        archive_folder   = _archive_folder()
+        db               = load_tracking()
+        found            = 0
+
+        for pdf_path in local_folder.rglob("*.pdf"):
+            try:
+                pdf_path.relative_to(extracted_folder); continue
+            except ValueError:
+                pass
+            try:
+                pdf_path.relative_to(archive_folder); continue
+            except ValueError:
+                pass
+            rel_key  = str(pdf_path.relative_to(local_folder))
+            existing = db.get("files", {}).get(rel_key, {})
+            db["files"][rel_key] = {
+                "name":           pdf_path.name,
+                "status":         "Pending",
+                "last_extracted": existing.get("last_extracted"),
+                "ref_number":     existing.get("ref_number"),
+                "local_path":     str(pdf_path),
+            }
+            found += 1
+
+        # Purge stale entries
+        stale = []
+        for rel_key, info in db.get("files", {}).items():
+            src  = Path(info.get("local_path", local_folder / rel_key))
+            arch = Path(info.get("archive_path", ""))
+            if not src.exists() and not arch.exists():
+                stale.append(rel_key)
+        for rel_key in stale:
+            del db["files"][rel_key]
+
+        save_tracking(db)
+
+        files     = db.get("files", {})
+        pending   = sum(1 for f in files.values() if f.get("status") == "Pending")
+        completed = sum(1 for f in files.values() if f.get("status") == "Completed")
+        lines = [f"🔍 Scan complete — **{found}** PDF(s) found in Local Folder.\n"]
+        lines.append(f"**Total:** {len(files)}   |   ✅ Completed: {completed}   |   🕐 Pending: {pending}\n")
+        if files:
+            lines.append("")
+            for rel_key, info in files.items():
+                status = info.get("status", "Pending")
+                icon   = "✅" if status == "Completed" else "🕐"
+                ref    = info.get("ref_number") or "--"
+                lines.append(f"  {icon}  {info.get('name', rel_key)}  (Ref: {ref})")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"⚠ Scan failed: {str(exc)[:200]}"
+
+
 def route_chat_message(message: str, history: list[dict]) -> str:
     history = _sanitize_history(history)
     lower   = message.lower()
 
-    # 1. Scan
-    if any(kw in lower for kw in ("scan box","scan folder","check box","scan","rescan")):
-        return (
-            "To scan the Local Folder, please click **📂 Scan Folder** in the sidebar "
-            "and press the **Scan Local Folder** button."
-        )
+    # 1. Sync
+    if any(kw in lower for kw in ("sync folder","sync now","sync box","sync","synchronise","synchronize")):
+        return trigger_sync_for_chat()
 
-    # 2. Extraction
+    # 2. Scan
+    if any(kw in lower for kw in ("scan box","scan folder","check box","scan","rescan")):
+        return trigger_scan_for_chat()
+
+    # 3. Extraction
     if any(kw in lower for kw in (
         "run extract","start extract","extract now","extract files",
         "run pipeline","extract","process files","process reports",
+        "generate report","generate reports","create report","create reports",
+        "run report","run reports","produce report","produce reports",
     )):
         return trigger_extraction_for_chat()
 
-    # 3. File status
+    # 4. File status
     if any(kw in lower for kw in (
         "file status","how many files","pending files","files pending",
         "files completed","file count",
@@ -1858,6 +2111,9 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         "show status","show file status","view file status",
         "overall status","what is the overall status",
         "pipeline","run pipeline","process",
+        "generate report","generate reports","create report","create reports",
+        "run report","run reports","produce report","produce reports",
+        "start extraction","run extraction","start pipeline",
     }
     _bare       = _PREFIX_STRIP.sub("", message.strip()).strip()
     _bare_lower = _bare.lower()
@@ -1894,7 +2150,7 @@ def route_chat_message(message: str, history: list[dict]) -> str:
                     return skill_lookup_report(subj_match.group(1).strip())
                 break
 
-    # 11. LLM (Granite → Groq)
+    # 11. LLM (ICA 1.0)
     cfg = _load_ai_config()
 
     grounded_context = None
@@ -1936,29 +2192,19 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         "then ask your question."
     )
 
-    granite_ready = (
-        cfg.get("watsonx",{}).get("api_key","") not in ("","YOUR_WATSONX_API_KEY")
-        and cfg.get("watsonx",{}).get("project_id","") not in ("","YOUR_WATSONX_PROJECT_ID")
-        and not cfg.get("watsonx",{}).get("project_id","").startswith("ApiKey-")
+    ica_ready = (
+        cfg.get("ica", {}).get("full_cookie", "") != ""
+        and cfg.get("ica", {}).get("team_id", "") != ""
+        and cfg.get("ica", {}).get("chat_id", "") != ""
     )
-    if granite_ready:
+    if ica_ready:
         try:
-            reply = granite_chat(_build_anchored_history(history), message)
-            if _is_hallucinated_reply(reply):
-                return _HALLUCINATION_BLOCKED
-            return reply
-        except Exception:
-            pass
-
-    groq_ready = cfg.get("groq",{}).get("api_key","") not in ("","YOUR_GROQ_API_KEY")
-    if groq_ready:
-        try:
-            reply = groq_chat(_build_anchored_history(history), message)
+            reply = ica_chat(_build_anchored_history(history), message)
             if _is_hallucinated_reply(reply):
                 return _HALLUCINATION_BLOCKED
             return reply
         except Exception as exc:
-            return f"⚠ LLM error: {str(exc)[:200]}"
+            return f"⚠ ICA error: {str(exc)[:200]}"
 
     return (
         "Hi! I'm Detective Conan. I can help with:\n"
@@ -1967,7 +2213,7 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         "• 'extract'             — run the extraction pipeline\n"
         "• 'file status'         — show Pending / Completed counts\n"
         "• 'logs this week'      — view extraction log history\n\n"
-        "Configure watsonx or groq credentials in config.json to enable full AI responses."
+        "Configure ICA credentials in config.json to enable full AI responses."
     )
 
 
@@ -2010,10 +2256,13 @@ class ChatFrame(tk.Frame):
         self._chat_display.configure(yscrollcommand=chat_sb.set)
         self._chat_display.pack(side="left", fill="both", expand=True)
         chat_sb.pack(side="right", fill="y")
-        self._chat_display.tag_configure("user",      foreground="#1F3864", font=("Segoe UI",10,"bold"))
-        self._chat_display.tag_configure("assistant", foreground="#22863A", font=("Segoe UI",10))
-        self._chat_display.tag_configure("system",    foreground=CLR_MUTED,  font=("Segoe UI",9,"italic"))
-        self._chat_display.tag_configure("error",     foreground=CLR_ORANGE, font=("Segoe UI",9,"italic"))
+        self._chat_display.tag_configure("user",       foreground="#1F3864", font=("Segoe UI",10,"bold"))
+        self._chat_display.tag_configure("assistant",  foreground="#22863A", font=("Segoe UI",10))
+        self._chat_display.tag_configure("asst_bold",  foreground="#22863A", font=("Segoe UI",10,"bold"))
+        self._chat_display.tag_configure("asst_italic",foreground="#22863A", font=("Segoe UI",10,"italic"))
+        self._chat_display.tag_configure("asst_hr",    foreground="#AAAAAA", font=("Segoe UI",9))
+        self._chat_display.tag_configure("system",     foreground=CLR_MUTED,  font=("Segoe UI",9,"italic"))
+        self._chat_display.tag_configure("error",      foreground=CLR_ORANGE, font=("Segoe UI",9,"italic"))
 
         input_frame = tk.Frame(self, bg=CLR_BG)
         input_frame.pack(fill="x", padx=24, pady=(0, 16))
@@ -2040,33 +2289,52 @@ class ChatFrame(tk.Frame):
     def on_show(self):
         if not self._history:
             self._append_message("system",
-                "Hello! I'm Detective Conan, your AI Assistant (V2).\n"
-                "I work from the Local Folder — Sync & Scan first!\n\n"
+                "Hello! I'm Detective Conan, your AI Assistant (V2).\n\n"
+                "Process flow:  Scan → Sync → Extract → Chat\n\n"
                 "Check Results\n"
                 "  'look up [name]'  |  'status of [ref]'\n\n"
-                "Extract / Sync\n"
-                "  'run extraction'  |  'extract files'\n\n"
+                "Run Pipeline\n"
+                "  'scan'  |  'sync'  |  'extract'\n\n"
                 "Logs & Status\n"
                 "  'logs this week'  |  'file status'"
             )
         try:
             cfg = _load_ai_config()
-            wx  = cfg.get("watsonx",{})
-            gc  = cfg.get("groq",{})
-            granite_ok = (
-                wx.get("api_key","") not in ("","YOUR_WATSONX_API_KEY")
-                and wx.get("project_id","") not in ("","YOUR_WATSONX_PROJECT_ID")
-                and not wx.get("project_id","").startswith("ApiKey-")
+            ic  = cfg.get("ica", {})
+            ica_ok = (
+                ic.get("full_cookie", "") != ""
+                and ic.get("team_id", "") != ""
+                and ic.get("chat_id", "") != ""
             )
-            if granite_ok:
-                self._model_var.set(f"Model: {wx.get('model_id','granite')}")
-            elif gc.get("api_key","") not in ("","YOUR_GROQ_API_KEY"):
-                self._model_var.set(f"Model: {gc.get('model','llama-3.3-70b')}")
+            if ica_ok:
+                self._model_var.set("Model: IBM Consulting Advantage")
             else:
-                self._model_var.set("Model: not configured")
+                self._model_var.set("AI: add ICA credentials in config.json")
         except Exception:
-            self._model_var.set("Model: config error")
+            self._model_var.set("AI: config error")
         self._input_box.focus_set()
+
+    def _insert_markdown(self, text: str):
+        """
+        Insert assistant text with basic markdown rendering into _chat_display.
+        Handles **bold**, *italic*, and --- horizontal rules.
+        Widget must already be in state="normal" before calling.
+        """
+        import re as _re_md
+        w = self._chat_display
+        for line in text.split("\n"):
+            if _re_md.match(r"^\s*---+\s*$", line):
+                w.insert("end", "─" * 48 + "\n", "asst_hr")
+                continue
+            parts = _re_md.split(r"(\*\*[^*]+\*\*|\*[^*]+\*)", line)
+            for part in parts:
+                if part.startswith("**") and part.endswith("**"):
+                    w.insert("end", part[2:-2], "asst_bold")
+                elif part.startswith("*") and part.endswith("*"):
+                    w.insert("end", part[1:-1], "asst_italic")
+                else:
+                    w.insert("end", part, "assistant")
+            w.insert("end", "\n", "assistant")
 
     def _append_message(self, role: str, text: str):
         self._chat_display.config(state="normal")
@@ -2075,13 +2343,81 @@ class ChatFrame(tk.Frame):
             self._chat_display.insert("end", text + "\n", "user")
         elif role == "assistant":
             self._chat_display.insert("end", "\nAssistant:  ", "assistant")
-            self._chat_display.insert("end", text + "\n", "assistant")
+            self._insert_markdown(text)
         elif role == "system":
             self._chat_display.insert("end", text + "\n", "system")
         else:
             self._chat_display.insert("end", f"\n⚠ {text}\n", "error")
         self._chat_display.config(state="disabled")
         self._chat_display.see("end")
+
+    def _append_links(self, payload_json: str):
+        """
+        Render extraction results with clickable file hyperlinks in the chat display.
+        payload_json is the JSON string produced by trigger_extraction_for_chat().
+        Always re-enables the input widgets in a finally block so they can never
+        stay locked even if an unexpected exception occurs during rendering.
+        """
+        import os
+        try:
+            try:
+                payload = json.loads(payload_json)
+            except Exception:
+                self._append_message("assistant", payload_json)
+                return
+
+            w = self._chat_display
+            w.config(state="normal")
+
+            # Record position before inserting so we can scroll to the top of results
+            start_mark = w.index("end-1c")
+
+            # ── Header ────────────────────────────────────────────────────────
+            w.insert("end", "\nAssistant:  ", "assistant")
+            w.insert("end", payload.get("header", "") + "\n\n", "assistant")
+
+            for idx, item in enumerate(payload.get("items", [])):
+                if item.get("status") == "ok":
+                    ref   = item.get("ref",   "")
+                    fname = item.get("fname", "")
+                    w.insert("end", f"  ✅  {fname}  —  Ref: {ref}\n", "assistant")
+                    for label, key in [("📄 Word", "word"), ("📊 Excel", "excel"), ("🗂 JSON", "json")]:
+                        path_str = item.get(key, "")
+                        if path_str:
+                            p   = Path(path_str)
+                            tag = f"link_{idx}_{key}"
+                            w.insert("end", f"     {label}:  ", "assistant")
+                            # Always show as clickable link — existence check removed
+                            # so links are never silently hidden if the folder date
+                            # differs from the current day (e.g. overnight extractions)
+                            w.insert("end", p.name, tag)
+                            w.tag_configure(tag, foreground="#2E75B6",
+                                            font=("Segoe UI", 10, "underline"),
+                                            cursor="hand2")
+                            w.tag_bind(tag, "<Button-1>",
+                                       lambda e, p=path_str: os.startfile(p))
+                            w.insert("end", "\n", "assistant")
+                    archive_str = item.get("archive", "")
+                    if archive_str:
+                        w.insert("end", f"     📦 Archived:  {Path(archive_str).name}\n", "assistant")
+                    up = item.get("upload", "")
+                    if up:
+                        w.insert("end", f"     ☁️  {up}\n", "assistant")
+                    w.insert("end", "\n", "assistant")
+                else:
+                    fname = item.get("fname", "")
+                    error = item.get("error", "")
+                    w.insert("end", f"  ❌  {fname}\n     Error: {error}\n\n", "error")
+
+            w.config(state="disabled")
+            # Scroll to the top of the extraction block so all items are visible
+            w.see(start_mark)
+        finally:
+            # Always re-enable — no exception can leave the chat locked
+            self._busy = False
+            self._input_box.config(state="normal")
+            self._send_btn.config(state="normal")
+            self._input_box.focus_set()
 
     def _clear_chat(self):
         self._history = []
@@ -2105,8 +2441,20 @@ class ChatFrame(tk.Frame):
     def _worker(self, user_message: str):
         try:
             reply = route_chat_message(user_message, list(self._history))
+            # Store a clean history entry — never store the raw §LINKS§ JSON blob
+            _SENTINEL = "\u00a7LINKS\u00a7"
+            if reply.startswith(_SENTINEL) and reply.endswith(_SENTINEL):
+                try:
+                    import json as _j
+                    _inner  = reply[len(_SENTINEL):-len(_SENTINEL)]
+                    _p      = _j.loads(_inner)
+                    _hentry = _p.get("header", "Extraction complete.")
+                except Exception:
+                    _hentry = "Extraction complete."
+            else:
+                _hentry = reply
             self._history.append({"role": "user",      "content": user_message})
-            self._history.append({"role": "assistant", "content": reply})
+            self._history.append({"role": "assistant", "content": _hentry})
             if len(self._history) > 40:
                 self._history = self._history[-40:]
             self.after(0, lambda r=reply: self._on_reply(r))
@@ -2115,7 +2463,13 @@ class ChatFrame(tk.Frame):
 
     def _on_reply(self, reply: str):
         self._typing_var.set("")
-        self._append_message("assistant", reply)
+        _LINKS_START = "\u00a7LINKS\u00a7"
+        _LINKS_END   = "\u00a7LINKS\u00a7"
+        if reply.startswith(_LINKS_START) and reply.endswith(_LINKS_END):
+            inner = reply[len(_LINKS_START):-len(_LINKS_END)]
+            self._append_links(inner)
+        else:
+            self._append_message("assistant", reply)
         self._busy = False
         self._input_box.config(state="normal")
         self._send_btn.config(state="normal")
@@ -2149,25 +2503,29 @@ def _ensure_folders() -> None:
     • Local Folder/Extracted/Word Extracts/
     • Local Folder/Extracted/CSV Extracts/
     • Local Folder/Extracted/JSON File Extracts/
+    • Local Folder/Archive/            — source PDFs moved here after extraction
     """
     try:
         cfg = _read_config()
     except Exception:
         cfg = {}
 
-    local_rel     = cfg.get("local", {}).get("local_folder",    "Local Folder")
-    extracted_rel = cfg.get("local", {}).get("extracted_folder","Local Folder/Extracted")
+    local_rel   = cfg.get("local", {}).get("local_folder",    "Local Folder")
+    extract_rel = cfg.get("local", {}).get("extracted_folder","Local Folder/Extracted")
+    archive_rel = cfg.get("local", {}).get("archive_folder",  "Local Folder/Archive")
 
-    local_path     = Path(local_rel)     if Path(local_rel).is_absolute()     else BASE_DIR / local_rel
-    extracted_path = Path(extracted_rel) if Path(extracted_rel).is_absolute() else BASE_DIR / extracted_rel
+    local_path   = Path(local_rel)   if Path(local_rel).is_absolute()   else BASE_DIR / local_rel
+    extract_path = Path(extract_rel) if Path(extract_rel).is_absolute() else BASE_DIR / extract_rel
+    archive_path = Path(archive_rel) if Path(archive_rel).is_absolute() else BASE_DIR / archive_rel
 
     folders = [
         LOG_HISTORY_DIR,
         local_path,
-        extracted_path,
-        extracted_path / "Word Extracts",
-        extracted_path / "CSV Extracts",
-        extracted_path / "JSON File Extracts",
+        extract_path,
+        extract_path / "Word Extracts",
+        extract_path / "CSV Extracts",
+        extract_path / "JSON File Extracts",
+        archive_path,
     ]
     for folder in folders:
         folder.mkdir(parents=True, exist_ok=True)
