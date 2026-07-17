@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-07"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-08"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,6 +412,7 @@ class PDFExtractorAppV2(tk.Tk):
             ("  Scan Local Folder",       "scan"),
             ("  Sync Box to Local",       "sync"),
             ("  Extract Files",           "extract"),
+            ("  View Extracted Files",    "view"),
             ("  Chat with AI Assistant",  "chat"),
         ]
         self._nav_btns = {}
@@ -459,8 +460,9 @@ class PDFExtractorAppV2(tk.Tk):
             ("scan",     ScanFolderFrame),
             ("sync",     SyncFrame),
             ("extract",  ExtractFrame),
+            ("view",     ViewExtractedFrame),
             ("chat",     ChatFrame),
-            ("insights", InsightsFrame),   # kept registered, accessible via Home card
+            ("insights", InsightsFrame),   # kept registered, not in sidebar
         ]:
             frame = cls(self._content, self)
             frame.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -492,25 +494,27 @@ class HomeFrame(tk.Frame):
 
         ttk.Separator(self, orient="horizontal").pack(fill="x", padx=80, pady=20)
 
-        # ── Row 1: Scan → Sync (process flow step 1 & 2) ─────────────────────
+        # ── Row 1: Scan → Sync → Extract (steps 1-3) ─────────────────────────
         row1 = tk.Frame(self, bg=CLR_BG)
         row1.pack()
         for icon, title, desc, key in [
             ("[SCAN]",    "Scan Local Folder",
-             "Scan Local Folder for PDFs\nand view their status.",   "scan"),
+             "Scan Local Folder for PDFs\nand view their status.",        "scan"),
             ("[SYNC]",    "Sync Box to Local",
-             "Download PDFs from Box\ninto the Local Folder.",       "sync"),
+             "Download PDFs from Box\ninto the Local Folder.",            "sync"),
+            ("[EXTRACT]", "Extract Files",
+             "Run extraction on Local Folder\nand upload outputs to Box.", "extract"),
         ]:
             self._make_card(row1, icon, title, desc, key)
 
-        # ── Row 2: Extract → Chat (process flow step 3 & 4) ──────────────────
+        # ── Row 2: View → Chat (steps 4-5) ───────────────────────────────────
         row2 = tk.Frame(self, bg=CLR_BG)
         row2.pack(pady=(0, 10))
         for icon, title, desc, key in [
-            ("[EXTRACT]", "Extract Files",
-             "Run extraction on Local Folder\nand upload outputs to Box.", "extract"),
+            ("[VIEW]",    "View Extracted Files",
+             "Browse extracted Word / Excel\nand JSON files by type.",    "view"),
             ("[AI]",      "Chat with AI Assistant",
-             "Chat with IBM Consulting\nAdvantage AI assistant.",          "chat"),
+             "Chat with IBM Consulting\nAdvantage AI assistant.",         "chat"),
         ]:
             self._make_card(row2, icon, title, desc, key)
 
@@ -525,9 +529,9 @@ class HomeFrame(tk.Frame):
 
         # Coloured accent square instead of emoji
         _ICON_COLOURS = {
-            "[SYNC]":    "#0D7377", "[SCAN]":    "#2E75B6",
-            "[CHART]":   "#7C5CD8", "[EXTRACT]": "#22863A",
-            "[AI]":      "#1F3864",
+            "[SCAN]":    "#2E75B6", "[SYNC]":    "#0D7377",
+            "[EXTRACT]": "#22863A", "[VIEW]":    "#B45309",
+            "[AI]":      "#1F3864", "[CHART]":   "#7C5CD8",
         }
         accent = _ICON_COLOURS.get(icon, CLR_ACCENT)
         lbl_icon = tk.Label(
@@ -958,6 +962,151 @@ class InsightsFrame(tk.Frame):
             c.create_rectangle(lx, pad_t, lx+12, pad_t+12, fill=colour, outline="")
             c.create_text(lx+16, pad_t+6, text=label, anchor="w", fill=CLR_TEXT, font=FONT_SMALL)
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# View Extracted Files Frame — browse outputs grouped by file type
+# ══════════════════════════════════════════════════════════════════════════════
+class ViewExtractedFrame(tk.Frame):
+    """
+    Shows all extracted output files grouped by type (Word / Excel / JSON).
+    Each type is shown in its own collapsible section with clickable filenames.
+    A Refresh button re-scans the Extracted folder on demand.
+    """
+
+    _TYPES = [
+        ("📄  Word Documents",  "Word Extracts",      "#2E75B6"),
+        ("📊  Excel Workbooks", "CSV Extracts",       "#22863A"),
+        ("🗂  JSON Files",      "JSON File Extracts", "#7C5CD8"),
+    ]
+
+    def __init__(self, parent, app):
+        super().__init__(parent, bg=CLR_BG)
+        self.app = app
+
+        # ── Header ────────────────────────────────────────────────────────────
+        hdr = tk.Frame(self, bg=CLR_BG)
+        hdr.pack(fill="x", padx=24, pady=(20, 8))
+        tk.Label(hdr, text="View Extracted Files", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        tk.Button(
+            hdr, text="  🔄  Refresh  ",
+            bg=CLR_ACCENT, fg=CLR_WHITE,
+            font=FONT_SMALL, relief="flat", cursor="hand2",
+            padx=8, pady=4, command=self.on_show,
+        ).pack(side="right")
+
+        self._status_var = tk.StringVar(value="")
+        tk.Label(self, textvariable=self._status_var,
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
+
+        # ── Scrollable body ───────────────────────────────────────────────────
+        outer = tk.Frame(self, bg=CLR_BG)
+        outer.pack(fill="both", expand=True, padx=24, pady=(8, 20))
+
+        canvas  = tk.Canvas(outer, bg=CLR_BG, highlightthickness=0)
+        scrollb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollb.set)
+        scrollb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        self._body = tk.Frame(canvas, bg=CLR_BG)
+        self._body_id = canvas.create_window((0, 0), window=self._body, anchor="nw")
+
+        def _on_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(self._body_id, width=canvas.winfo_width())
+        self._body.bind("<Configure>", _on_configure)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(self._body_id, width=e.width))
+
+        # Mouse-wheel scrolling
+        def _scroll(e):
+            canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _scroll)
+
+    def on_show(self):
+        import os
+        for w in self._body.winfo_children():
+            w.destroy()
+
+        extracted_root = _extracted_folder()
+        total = 0
+
+        for section_label, subfolder_name, colour in self._TYPES:
+            base = extracted_root / subfolder_name
+            # Collect files recursively, sorted by modification time (newest first)
+            files = sorted(base.rglob("*.*"), key=lambda p: p.stat().st_mtime, reverse=True) \
+                    if base.exists() else []
+            # Filter to only the expected extension
+            ext_map = {"Word Extracts": ".docx", "CSV Extracts": ".xlsx",
+                       "JSON File Extracts": ".json"}
+            ext   = ext_map.get(subfolder_name, "")
+            files = [f for f in files if f.suffix.lower() == ext]
+            total += len(files)
+
+            # ── Section header ────────────────────────────────────────────────
+            sec_hdr = tk.Frame(self._body, bg=colour)
+            sec_hdr.pack(fill="x", pady=(10, 0))
+            tk.Label(
+                sec_hdr, text=f"  {section_label}  ({len(files)} file{'s' if len(files)!=1 else ''})",
+                bg=colour, fg=CLR_WHITE, font=FONT_BOLD, anchor="w", padx=4, pady=6,
+            ).pack(side="left")
+
+            # ── File list ─────────────────────────────────────────────────────
+            list_frame = tk.Frame(self._body, bg=CLR_WHITE,
+                                  highlightbackground="#E5E7EB", highlightthickness=1)
+            list_frame.pack(fill="x", pady=(0, 4))
+
+            if not files:
+                tk.Label(list_frame, text="  No files found.",
+                         bg=CLR_WHITE, fg=CLR_MUTED, font=FONT_SMALL,
+                         anchor="w", pady=6).pack(fill="x", padx=8)
+                continue
+
+            # Group files by their ref subfolder (parent folder name)
+            from collections import OrderedDict
+            groups: dict = OrderedDict()
+            for f in files:
+                group_key = f.parent.name  # e.g. "RN-123456_789_10"
+                groups.setdefault(group_key, []).append(f)
+
+            for ref_key, ref_files in groups.items():
+                # Ref group label
+                grp = tk.Frame(list_frame, bg="#F0F4FF")
+                grp.pack(fill="x", padx=4, pady=(4, 0))
+                tk.Label(
+                    grp, text=f"  📁  {ref_key}",
+                    bg="#F0F4FF", fg=CLR_ACCENT, font=FONT_LABEL, anchor="w",
+                ).pack(fill="x", padx=4, pady=2)
+
+                for fpath in ref_files:
+                    row = tk.Frame(list_frame, bg=CLR_WHITE, cursor="hand2")
+                    row.pack(fill="x", padx=16, pady=1)
+                    mtime = datetime.fromtimestamp(fpath.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                    lbl = tk.Label(
+                        row,
+                        text=f"  {fpath.name}",
+                        bg=CLR_WHITE, fg="#2E75B6",
+                        font=("Segoe UI", 9, "underline"),
+                        anchor="w", cursor="hand2",
+                    )
+                    lbl.pack(side="left", fill="x", expand=True)
+                    tk.Label(
+                        row, text=mtime,
+                        bg=CLR_WHITE, fg=CLR_MUTED, font=("Segoe UI", 8),
+                        anchor="e",
+                    ).pack(side="right", padx=8)
+
+                    def _open(e, p=str(fpath)):
+                        import os as _os
+                        _os.startfile(p)
+                    lbl.bind("<Button-1>", _open)
+                    row.bind("<Button-1>", _open)
+
+        self._status_var.set(
+            f"{total} file(s) found across Word / Excel / JSON  —  "
+            f"last refreshed {datetime.now().strftime('%H:%M:%S')}"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1966,6 +2115,154 @@ def trigger_scan_for_chat() -> str:
         return f"⚠ Scan failed: {str(exc)[:200]}"
 
 
+def _find_report_files(query: str) -> list[dict]:
+    """
+    Search extracted JSON files for reports matching query (name, ref, partial name).
+    Returns a list of dicts: {subject, ref, word, excel, json}
+    """
+    import re as _re
+    extracted_root = _extracted_folder()
+    json_root      = extracted_root / "JSON File Extracts"
+    if not json_root.exists():
+        return []
+
+    q_lower = query.lower().strip()
+    matches = []
+    seen_refs = set()
+
+    for jpath in sorted(json_root.rglob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data    = json.loads(jpath.read_text(encoding="utf-8"))
+            summary = data.get("report_summary", {})
+            subject = summary.get("subject_name", "").strip()
+            ref     = summary.get("case_reference", "").strip()
+        except Exception:
+            continue
+
+        # Match on subject name (full / partial / first / last) or ref
+        subject_lower = subject.lower()
+        parts = subject_lower.replace(",", " ").split()
+        hit = (
+            q_lower in subject_lower
+            or q_lower in ref.lower()
+            or any(q_lower == p for p in parts)
+            or any(q_lower in p for p in parts)
+        )
+        if not hit:
+            continue
+
+        # Deduplicate by ref (keep newest version)
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
+
+        # Find matching word/excel files by convention: same ref subfolder
+        ref_folder = jpath.parent   # e.g. .../RN-123456_789_10/
+        word_path  = next(ref_folder.parent.parent.parent.parent.parent.parent.rglob(
+            f"{ref_folder.name}/*.docx"), None)
+        excel_path = next(ref_folder.parent.parent.parent.parent.parent.parent.rglob(
+            f"{ref_folder.name}/*.xlsx"), None)
+
+        # Simpler: walk from extracted_root
+        ref_slug = ref_folder.name
+        word_root  = extracted_root / "Word Extracts"
+        excel_root = extracted_root / "CSV Extracts"
+        wp = next(word_root.rglob(f"{ref_slug}/*.docx"),  None) if word_root.exists() else None
+        ep = next(excel_root.rglob(f"{ref_slug}/*.xlsx"), None) if excel_root.exists() else None
+
+        matches.append({
+            "subject": subject,
+            "ref":     ref,
+            "json":    str(jpath),
+            "word":    str(wp)  if wp else "",
+            "excel":   str(ep)  if ep else "",
+        })
+
+    return matches
+
+
+def _skill_list_all_reports() -> str:
+    """Return a list of all available extracted reports."""
+    extracted_root = _extracted_folder()
+    json_root      = extracted_root / "JSON File Extracts"
+    if not json_root.exists():
+        return (
+            "No extracted reports found.\n"
+            "Run **'extract'** first to process your PDFs."
+        )
+
+    seen_refs = set()
+    entries   = []
+    for jpath in sorted(json_root.rglob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data    = json.loads(jpath.read_text(encoding="utf-8"))
+            summary = data.get("report_summary", {})
+            subject = summary.get("subject_name", "").strip()
+            ref     = summary.get("case_reference", "").strip()
+        except Exception:
+            continue
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
+        entries.append(f"  • **{subject}**  (Ref: {ref})")
+
+    if not entries:
+        return (
+            "No extracted reports found.\n"
+            "Run **'extract'** first to process your PDFs."
+        )
+
+    header = f"**{len(entries)}** extracted report(s) available:\n\n"
+    body   = "\n".join(entries)
+    footer = (
+        "\n\nTo open a file, say:\n"
+        "  **generate report for [name]**\n"
+        "  e.g. *generate report for Manalo*"
+    )
+    return header + body + footer
+
+
+def _skill_open_report(subject_query: str, file_type: str) -> str:
+    """
+    Find the best matching report for subject_query and open it in the OS
+    with the requested file_type (word / excel / json).
+    Returns a chat message confirming the action.
+    """
+    import os as _os
+    matches = _find_report_files(subject_query)
+    if not matches:
+        return (
+            f"No extracted reports found matching **'{subject_query}'**.\n"
+            "Please run an extraction first."
+        )
+    # Pick the single best match (newest, already sorted)
+    m = matches[0]
+    path_str = m.get(file_type, "")
+    if not path_str:
+        return (
+            f"The **{file_type.capitalize()}** file for **{m['subject']}** "
+            f"(Ref: {m['ref']}) was not found.\n"
+            "Try a different file type or re-run extraction."
+        )
+    p = Path(path_str)
+    if not p.exists():
+        return (
+            f"File not found on disk: `{p.name}`\n"
+            "It may have been moved. Open **View Extracted Files** to browse manually."
+        )
+    try:
+        _os.startfile(str(p))
+    except Exception as exc:
+        return f"⚠ Could not open file: {exc}"
+    _ext = {"word": ".docx", "excel": ".xlsx", "json": ".json"}.get(file_type, "")
+    return (
+        f"✅ Opening **{p.name}** for **{m['subject']}** (Ref: {m['ref']}).\n\n"
+        f"The file should open in your default application."
+    )
+
+
 def route_chat_message(message: str, history: list[dict]) -> str:
     history = _sanitize_history(history)
     lower   = message.lower()
@@ -2033,25 +2330,109 @@ def route_chat_message(message: str, history: list[dict]) -> str:
             "or run an extraction if the report has not been processed yet."
         )
 
-    # 6. Report download — redirect to local files
-    _REPORT_PATTERNS = [
-        r"generate\s+(?:me\s+)?reports?\s+(?:for\s+)?(.+)",
-        r"download\s+reports?\s+(?:for\s+)?(.+)",
-        r"get\s+reports?\s+(?:for\s+)?(.+)",
-        r"reports?\s+for\s+(.+)",
-    ]
-    for _rp in _REPORT_PATTERNS:
-        _rm = _re_ai.match(_rp, lower.strip(), _re_ai.IGNORECASE)
-        if _rm:
-            _rq = _rm.group(1).strip()
-            ext_dir = _extracted_folder()
+    # 6. "generate report" — multi-turn file-type selector
+    _GEN_BARE = _re_ai.match(
+        r"^(?:generate|create|produce|run|show|list)\s+(?:all\s+)?reports?$",
+        lower.strip(), _re_ai.IGNORECASE
+    )
+    _GEN_FOR = _re_ai.match(
+        r"^(?:generate|create|produce|get|download|run)\s+(?:me\s+)?reports?\s+(?:for\s+)?(.+)$",
+        lower.strip(), _re_ai.IGNORECASE
+    )
+
+    # ── Sub-step: user just provided a file type after we asked ───────────────
+    _FILETYPE_MARKERS = (
+        "which file type would you like",
+        "word, excel, or json",
+    )
+    _SUBJECT_MARKERS  = (
+        "which person",
+        "please clarify",
+        "multiple reports found",
+        "did you mean",
+    )
+    _last_bot_lower = _last_bot.lower() if "_last_bot" in dir() else ""
+    # re-compute _last_bot if not set
+    _last_bot2 = next(
+        (t.get("content","") for t in reversed(history) if t.get("role") == "assistant"), ""
+    )
+    _last_bot_lower2 = _last_bot2.lower()
+
+    if any(m in _last_bot_lower2 for m in _FILETYPE_MARKERS):
+        # User replied with a file type — find the subject from prior context
+        _ft_lower = lower.strip()
+        _ft_map   = {
+            "word": "word", "doc": "word", "docx": "word",
+            "excel": "excel", "xlsx": "excel", "spreadsheet": "excel", "xls": "excel",
+            "json": "json",
+        }
+        _chosen_ft = next((v for k, v in _ft_map.items() if k in _ft_lower), None)
+        if not _chosen_ft:
             return (
-                f"The extracted files for **{_rq}** are saved locally in:\n"
-                f"  • {ext_dir / 'Word Extracts'}\n"
-                f"  • {ext_dir / 'CSV Extracts'}\n"
-                f"  • {ext_dir / 'JSON File Extracts'}\n\n"
-                f"Navigate to those folders or use 'look up {_rq}' to see the report data here."
+                "Please specify the file type:\n"
+                "  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)"
             )
+        # Recover subject from the last assistant turn that contained a name/ref
+        _subj_match2 = _re_ai.search(
+            r"(?:report for|for)\s+['\"]?([^\"'\n?]+)['\"]?", _last_bot2, _re_ai.IGNORECASE
+        )
+        _subj2 = _subj_match2.group(1).strip() if _subj_match2 else None
+        if not _subj2:
+            # Try recovering from the turn before that
+            for _ht in reversed(history[:-1]):
+                if _ht.get("role") == "assistant":
+                    _m2 = _re_ai.search(
+                        r"(?:report for|for)\s+['\"]?([^\"'\n?]+)['\"]?",
+                        _ht.get("content",""), _re_ai.IGNORECASE
+                    )
+                    if _m2:
+                        _subj2 = _m2.group(1).strip()
+                        break
+        if not _subj2:
+            return "I lost track of which person you meant. Please say: **generate report for [name]**"
+        return _skill_open_report(_subj2, _chosen_ft)
+
+    if any(m in _last_bot_lower2 for m in _SUBJECT_MARKERS):
+        # User replied with a clarification — treat as a new generate-report-for request
+        _rq2 = message.strip()
+        return (
+            f"Got it — report for **{_rq2}**.\n\n"
+            f"Which file type would you like?\n"
+            f"  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)"
+        )
+
+    if _GEN_BARE:
+        # "generate report" with no subject → list all available + ask who
+        return _skill_list_all_reports()
+
+    if _GEN_FOR:
+        _rq = _GEN_FOR.group(1).strip()
+        _rq = _re_ai.sub(
+            r"\s*(?:please|now|thanks?)\s*$", "", _rq, flags=_re_ai.IGNORECASE
+        ).strip()
+        if not _rq:
+            return _skill_list_all_reports()
+        # Check if query is specific enough
+        _matches = _find_report_files(_rq)
+        if not _matches:
+            return (
+                f"No extracted reports found matching **'{_rq}'**.\n"
+                "Please run an extraction first, or check the name / reference number."
+            )
+        if len(_matches) > 1:
+            # Ambiguous — list and ask to clarify
+            _names = "\n".join(f"  {i+1}. {m['subject']} (Ref: {m['ref']})" for i, m in enumerate(_matches))
+            return (
+                f"Multiple reports found matching **'{_rq}'**:\n\n{_names}\n\n"
+                f"Which person did you mean? (Reply with the name or reference number)"
+            )
+        # Single match — ask for file type
+        _m = _matches[0]
+        return (
+            f"Found report for **{_m['subject']}** (Ref: {_m['ref']}).\n\n"
+            f"Which file type would you like?\n"
+            f"  **Word** (.docx)  |  **Excel** (.xlsx)  |  **JSON** (.json)"
+        )
 
     # 7. Lookup verb patterns
     _LOOKUP_PATTERNS = [
@@ -2353,12 +2734,9 @@ class ChatFrame(tk.Frame):
 
     def _append_links(self, payload_json: str):
         """
-        Render extraction results with clickable file hyperlinks in the chat display.
-        payload_json is the JSON string produced by trigger_extraction_for_chat().
-        Always re-enables the input widgets in a finally block so they can never
-        stay locked even if an unexpected exception occurs during rendering.
+        Render extraction summary in chat (no file links — use View Extracted Files tab).
+        Always re-enables the input widgets in a finally block.
         """
-        import os
         try:
             try:
                 payload = json.loads(payload_json)
@@ -2368,38 +2746,16 @@ class ChatFrame(tk.Frame):
 
             w = self._chat_display
             w.config(state="normal")
-
-            # Record position before inserting so we can scroll to the top of results
             start_mark = w.index("end-1c")
 
-            # ── Header ────────────────────────────────────────────────────────
             w.insert("end", "\nAssistant:  ", "assistant")
             w.insert("end", payload.get("header", "") + "\n\n", "assistant")
 
-            for idx, item in enumerate(payload.get("items", [])):
+            for item in payload.get("items", []):
                 if item.get("status") == "ok":
                     ref   = item.get("ref",   "")
                     fname = item.get("fname", "")
                     w.insert("end", f"  ✅  {fname}  —  Ref: {ref}\n", "assistant")
-                    for label, key in [("📄 Word", "word"), ("📊 Excel", "excel"), ("🗂 JSON", "json")]:
-                        path_str = item.get(key, "")
-                        if path_str:
-                            p   = Path(path_str)
-                            tag = f"link_{idx}_{key}"
-                            w.insert("end", f"     {label}:  ", "assistant")
-                            # Always show as clickable link — existence check removed
-                            # so links are never silently hidden if the folder date
-                            # differs from the current day (e.g. overnight extractions)
-                            w.insert("end", p.name, tag)
-                            w.tag_configure(tag, foreground="#2E75B6",
-                                            font=("Segoe UI", 10, "underline"),
-                                            cursor="hand2")
-                            w.tag_bind(tag, "<Button-1>",
-                                       lambda e, p=path_str: os.startfile(p))
-                            w.insert("end", "\n", "assistant")
-                    archive_str = item.get("archive", "")
-                    if archive_str:
-                        w.insert("end", f"     📦 Archived:  {Path(archive_str).name}\n", "assistant")
                     up = item.get("upload", "")
                     if up:
                         w.insert("end", f"     ☁️  {up}\n", "assistant")
@@ -2409,11 +2765,12 @@ class ChatFrame(tk.Frame):
                     error = item.get("error", "")
                     w.insert("end", f"  ❌  {fname}\n     Error: {error}\n\n", "error")
 
+            w.insert("end",
+                "  👉  Open **View Extracted Files** in the sidebar to browse and open output files.\n",
+                "assistant")
             w.config(state="disabled")
-            # Scroll to the top of the extraction block so all items are visible
             w.see(start_mark)
         finally:
-            # Always re-enable — no exception can leave the chat locked
             self._busy = False
             self._input_box.config(state="normal")
             self._send_btn.config(state="normal")
