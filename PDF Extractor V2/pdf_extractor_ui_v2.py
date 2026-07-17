@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-11"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-12"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -648,6 +648,16 @@ class SyncFrame(tk.Frame):
             if errors:
                 for e in errors:
                     self.after(0, lambda x=e: self._log(f"  ⚠ {x}"))
+            # ── Auto-scan after sync ──────────────────────────────────────────
+            self.after(0, lambda: self._log("🔍 Auto-scanning Local Folder…"))
+            scan_result = trigger_scan_for_chat()
+            # Strip markdown bold markers for the plain log box
+            import re as _re_log
+            scan_plain = _re_log.sub(r"\*\*([^*]+)\*\*", r"\1", scan_result)
+            self.after(0, lambda s=scan_plain: self._log(s))
+            self.after(0, lambda: self._status_var.set(
+                summary + "  |  Auto-scan complete."
+            ))
         except Exception as exc:
             msg = f"⚠ Sync failed: {str(exc)[:200]}"
             self.after(0, lambda m=msg: self._status_var.set(m))
@@ -2044,14 +2054,24 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
 # Steps 5-11 identical to V1
 # ─────────────────────────────────────────────────────────────────────────────
 def trigger_sync_for_chat() -> str:
-    """Run the Box → Local Folder sync synchronously and return a text summary."""
+    """Run Box → Local Folder sync then auto-scan, return combined summary."""
     try:
         downloaded, skipped, errors = sync_box_to_local()
-        lines = [f"🔄 Sync complete — **{downloaded}** downloaded, **{skipped}** already existed, **{len(errors)}** error(s)."]
+        lines = [
+            f"🔄 Sync complete — **{downloaded}** downloaded, "
+            f"**{skipped}** already existed, **{len(errors)}** error(s)."
+        ]
         if errors:
             lines.append("")
             for e in errors:
                 lines.append(f"  ⚠ {e}")
+        # Auto-scan immediately after sync so tracking_db is up to date
+        lines.append("")
+        lines.append("🔍 Auto-scanning Local Folder…")
+        scan_result = trigger_scan_for_chat()
+        lines.append(scan_result)
+        lines.append("")
+        lines.append("Ready — you can now type **'extract'** to process new files.")
         return "\n".join(lines)
     except Exception as exc:
         return f"⚠ Sync failed: {str(exc)[:300]}"
