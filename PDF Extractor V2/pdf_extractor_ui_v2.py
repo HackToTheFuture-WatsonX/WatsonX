@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-08"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-09"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2279,8 +2279,6 @@ def route_chat_message(message: str, history: list[dict]) -> str:
     if any(kw in lower for kw in (
         "run extract","start extract","extract now","extract files",
         "run pipeline","extract","process files","process reports",
-        "generate report","generate reports","create report","create reports",
-        "run report","run reports","produce report","produce reports",
     )):
         return trigger_extraction_for_chat()
 
@@ -2492,8 +2490,6 @@ def route_chat_message(message: str, history: list[dict]) -> str:
         "show status","show file status","view file status",
         "overall status","what is the overall status",
         "pipeline","run pipeline","process",
-        "generate report","generate reports","create report","create reports",
-        "run report","run reports","produce report","produce reports",
         "start extraction","run extraction","start pipeline",
     }
     _bare       = _PREFIX_STRIP.sub("", message.strip()).strip()

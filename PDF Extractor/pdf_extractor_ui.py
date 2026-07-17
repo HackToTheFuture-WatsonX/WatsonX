@@ -1870,8 +1870,6 @@ def route_chat_message(message: str, history: list[dict]) -> str:
     if any(kw in lower for kw in (
         "run extract", "start extract", "extract now", "extract files",
         "run pipeline", "extract", "process files", "process reports",
-        "generate report", "generate reports", "create report", "create reports",
-        "run report", "run reports", "produce report", "produce reports",
     )):
         return trigger_extraction_for_chat()
 
