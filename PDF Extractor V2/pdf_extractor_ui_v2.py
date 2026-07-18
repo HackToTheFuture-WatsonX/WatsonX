@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-17"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-18"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -385,29 +385,63 @@ def sync_box_to_local(progress_cb=None) -> tuple[int, int, list[str]]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Box upload helper — upload a local file to a Box folder
 # ─────────────────────────────────────────────────────────────────────────────
-def upload_file_to_box(local_path: Path, box_folder_id: str,
-                       client=None) -> str:
+def _box_get_or_create_subfolder(client, parent_folder_id: str, name: str) -> str:
     """
-    Upload *local_path* to Box folder *box_folder_id*.
-    Creates subfolders on Box mirroring the path relative to Extracted root.
-    Returns the Box file ID of the uploaded file.
+    Return the Box folder ID of *name* inside *parent_folder_id*.
+    Creates it if it doesn't exist.
+    """
+    items = list(client.folder(parent_folder_id).get_items(limit=1000))
+    for item in items:
+        if item.type == "folder" and item.name == name:
+            return item.id
+    new_folder = client.folder(parent_folder_id).create_subfolder(name)
+    return new_folder.id
+
+
+def upload_file_to_box(local_path: Path, box_root_folder_id: str,
+                       client=None, extracted_root: Path = None) -> str:
+    """
+    Upload *local_path* to Box, mirroring the local dated hierarchy under
+    *box_root_folder_id*:
+
+      box_root / YYYY / MMM_YYYY_Extracts / Week_NN / YYYY-MM-DD / RefNo / file
+
+    *extracted_root* is the local Extracted/ base — used to compute the
+    relative path segments.  Falls back to flat upload if the path cannot
+    be resolved relative to extracted_root.
+
+    Returns the Box file ID of the uploaded/versioned file.
     """
     if client is None:
         client, _ = get_box_client()
 
-    # Upload directly to the target folder (flat, no mirror hierarchy for outputs)
-    box_folder = client.folder(box_folder_id)
-    # Check whether a file with the same name already exists (update vs upload)
+    # ── Resolve path segments relative to extracted_root ─────────────────────
+    # local_path is e.g.:
+    #   .../Extracted/Word Extracts/2026/Jul_2026_Extracts/Week_29/2026-07-18/RN-123/file.docx
+    # We want to strip the "Word Extracts / CSV Extracts / JSON File Extracts" prefix
+    # and keep: 2026 / Jul_2026_Extracts / Week_29 / 2026-07-18 / RN-123 / file.docx
+    folder_id = box_root_folder_id
+    if extracted_root is not None:
+        try:
+            rel = local_path.relative_to(extracted_root)
+            # rel.parts = ("Word Extracts", "2026", "Jul_2026_Extracts", …, "RN-123", "file.docx")
+            # Drop the first segment (type bucket) and the last (filename)
+            path_parts = list(rel.parts[1:-1])   # ["2026", "Jul_2026_Extracts", "Week_29", "YYYY-MM-DD", "RN-123"]
+            for part in path_parts:
+                folder_id = _box_get_or_create_subfolder(client, folder_id, part)
+        except ValueError:
+            pass  # local_path not under extracted_root — fall back to flat upload
+
+    # ── Upload or version the file in the resolved folder ────────────────────
     existing = {
         item.name: item.id
-        for item in client.folder(box_folder_id).get_items(limit=1000)
+        for item in client.folder(folder_id).get_items(limit=1000)
         if item.type == "file"
     }
     if local_path.name in existing:
-        # Update (new version) the existing file
         uploaded = client.file(existing[local_path.name]).update_contents(str(local_path))
     else:
-        uploaded = box_folder.upload(str(local_path))
+        uploaded = client.folder(folder_id).upload(str(local_path))
     return uploaded.id
 
 
@@ -1529,12 +1563,13 @@ class ExtractFrame(tk.Frame):
                     extractor.CSV_OUT_DIR  = orig_csv
                     extractor.JSON_OUT_DIR = orig_json
 
-                # Step 5 — Upload to Box output_folder_id
+                # Step 5 — Upload to Box output_folder_id (mirroring local hierarchy)
                 upload_status = ""
                 if box_client and output_folder_id:
                     try:
                         for out_path in (word_path, csv_path, json_path):
-                            upload_file_to_box(out_path, output_folder_id, box_client)
+                            upload_file_to_box(out_path, output_folder_id, box_client,
+                                               extracted_root=extracted_root)
                         upload_status = f"Uploaded 3 file(s) to Box folder {output_folder_id}"
                     except Exception as up_exc:
                         upload_status = f"Upload failed: {str(up_exc)[:120]}"
@@ -1929,7 +1964,8 @@ def trigger_extraction_for_chat() -> str:
             if box_client and output_folder_id:
                 try:
                     for op in (word_path, csv_path, json_path):
-                        upload_file_to_box(op, output_folder_id, box_client)
+                        upload_file_to_box(op, output_folder_id, box_client,
+                                           extracted_root=extracted_root)
                     upload_status = f"Uploaded to Box folder {output_folder_id}"
                 except Exception as ue:
                     upload_status = f"Upload failed: {str(ue)[:80]}"
