@@ -1,51 +1,55 @@
-# PDF Text Extractor
+# Background Check Report Automation — V1
 
-Connects to your **Box Online** account via the Box API, finds password-protected PDF files, decrypts them, and exports the extracted content to **Word**, **CSV**, and **JSON** formats.
-
----
-
-## Project Structure
-
-```
-PDF Extractor/
-├── pdf_text_extractor.py   ← Main application
-├── config.json             ← Configuration (Box API credentials, PDF password, settings)
-├── requirements.txt        ← Python dependencies
-├── extractor.log           ← Activity log (created on first run)
-├── Word Extracts/          ← Exported .docx files
-├── CSV Extracts/           ← Exported .csv files
-└── JSON File Extracts/     ← Exported .json files
-```
+Desktop application for processing background check PDF reports from IBM Box.
 
 ---
 
-## Setup
+## Screens
 
-### 1. Install Dependencies
+| Screen | Purpose |
+|--------|---------|
+| **Home** | Landing page — shortcut cards for each step |
+| **Check Box** | Scan Box folder for PDFs and register them as Pending |
+| **Extract Files** | Run extraction pipeline — decrypt, parse, export to Word / Excel / JSON |
+| **Chat with AI Assistant** | Conversational AI powered by IBM Consulting Advantage (ICA 1.0) |
+
+---
+
+## Process Flow
+
+```
+Box (folder_id)
+      │
+      ▼  Check Box — scan for PDFs
+Tracking DB (Pending files)
+      │
+      ▼  Extract Files
+Word Extracts/
+CSV Extracts/
+JSON File Extracts/   ← AI Assistant reads from here
+```
+
+### Step-by-step
+
+1. **Check Box** — Click "Scan Box Folder" to scan your Box folder and register PDFs as Pending.
+2. **Extract Files** — Click "Start Extraction" to process all Pending PDFs:
+   - Download each PDF from Box into memory
+   - Decrypt using `pdf_password`
+   - Parse and export Word / Excel / JSON into the app folder
+   - Mark each file Completed
+3. **Chat with AI Assistant** — Ask questions about reports or run commands.
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Create a Box App & Get Your Credentials
-
-1. Go to [https://app.box.com/developers/console](https://app.box.com/developers/console)
-2. Click **Create New App** → choose **Custom App** → **User Authentication (OAuth 2.0)**
-3. Once created, go to the app's **Configuration** tab
-4. Scroll to **Developer Token** → click **Generate Developer Token**
-5. Copy the token — it is valid for **60 minutes**
-
-> **For production / long-running use:** Set up a **JWT** or **Client Credentials Grant (CCG)** app in the Box Developer Console and update the `get_box_client()` function in `pdf_text_extractor.py` accordingly.
-
-### 3. Find Your Box Folder ID
-
-- Open [https://app.box.com](https://app.box.com) in your browser
-- Navigate to the folder that contains your PDFs
-- The **numeric ID** is in the URL: `https://app.box.com/folder/`**`123456789`**
-- Use `"0"` to scan your entire root Box folder
-
-### 4. Edit `config.json`
-
-Open [`config.json`](config.json) and fill in the required values:
+### 2. Configure `config.json`
 
 ```json
 {
@@ -54,70 +58,79 @@ Open [`config.json`](config.json) and fill in the required values:
     "client_id":     "your_box_client_id",
     "client_secret": "your_box_client_secret",
     "access_token":  "your_developer_token",
-    "folder_id":     "123456789"
+    "folder_id":     "your_box_folder_id"
   },
-  "settings": {
-    "search_subfolders": true,
-    "overwrite_existing_exports": true
+  "ica": {
+    "full_cookie":   "paste_full_cookie_from_devtools",
+    "team_id":       "your_ica_team_id",
+    "team_name":     "Your%20Team",
+    "assistant_id":  "your_ica_assistant_id",
+    "chat_id":       "your_ica_chat_id",
+    "base_url":      "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat"
   }
 }
 ```
 
-| Key | Description |
-|-----|-------------|
-| `pdf_password` | Password to decrypt your PDF files |
-| `box.client_id` | Your Box App's Client ID |
-| `box.client_secret` | Your Box App's Client Secret |
-| `box.access_token` | Developer Token (or OAuth2 access token) |
-| `box.folder_id` | Numeric ID of the Box folder to scan (`"0"` = root) |
+Key fields:
 
-> **Note:** `pdf_password` is intended to be replaced by a Password Manager integration in a future version for improved security.
+| Field | Description |
+|-------|-------------|
+| `pdf_password` | Password to decrypt the PDF reports |
+| `box.folder_id` | Box folder to scan for PDFs |
+| `box.access_token` | Box Developer Token (expires every 60 min) |
+| `ica.*` | IBM Consulting Advantage credentials — use the ICA Cookie Parser tool to generate |
 
-### 5. Run the Extractor
+### 3. Launch
+
+Double-click `Launch.vbs`, or run:
+
 ```bash
-python pdf_text_extractor.py
+python pdf_extractor_ui.py
 ```
 
 ---
 
-## What It Does — Step by Step
+## Folder Structure
 
-1. **Loads** `config.json` for Box credentials and the PDF password
-2. **Connects** to Box Online via the Box SDK using your access token
-3. **Scans** the configured Box folder (and subfolders, if enabled) for `.pdf` files
-4. **Downloads** each PDF file into memory (nothing is saved to disk from Box)
-5. **Decrypts** each password-protected PDF using the configured password
-6. **Extracts** all raw text, page by page
-7. **Parses** key-value fields from the text (e.g. `Name: John`, `Last Name: Doe`)
-8. **Exports** three output files per PDF:
-
-| Output | Location | Contents |
-|--------|----------|----------|
-| `.docx` | `Word Extracts/` | Full raw text, one section per page |
-| `.csv`  | `CSV Extracts/`  | One column per detected field (Name, Last Name, etc.) |
-| `.json` | `JSON File Extracts/` | Structured JSON with fields + full page text |
-
----
-
-## CSV Output Format
-
-Fields detected in the PDF (e.g. `Name`, `Last Name`, `Date of Birth`) become **column headers** in row 1, with their values in row 2. This makes it easy to open directly in Excel.
-
-**Example:**
-
-| Name | Last Name | Date of Birth |
-|------|-----------|---------------|
-| John | Doe       | 01/01/1990    |
+```
+PDF Extractor/
+├── pdf_extractor_ui.py        Main UI — run this
+├── pdf_text_extractor.py      Core extraction engine
+├── config.json                Credentials and settings
+├── tracking_db.json           Auto-created — per-file Pending/Completed state
+├── Launch.vbs                 Double-click to launch without a console window
+├── requirements.txt           Python dependencies
+├── Word Extracts/             Exported .docx files
+├── CSV Extracts/              Exported .xlsx files
+├── JSON File Extracts/        Exported .json files
+└── Log History/               Per-file extraction logs
+```
 
 ---
 
-## Settings Reference (`config.json`)
+## ICA Credentials
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `search_subfolders` | `true` | Scan subdirectories inside the Box folder |
-| `overwrite_existing_exports` | `true` | Overwrite previously generated exports |
-| `log_activity` | `true` | Write activity log to `extractor.log` |
+The AI Assistant uses **IBM Consulting Advantage (ICA) 1.0**. To get your credentials:
+
+1. Open the **ICA Cookie Parser** tool: `ICA Cookie Parser/ica_cookie_parser.html`
+2. In your browser, open ICA and send any message
+3. Open DevTools → Network → click the `entries` POST → Headers tab → copy all headers
+4. Paste into the parser and click **Parse & Generate Config**
+5. Copy the generated `"ica": { ... }` block into `config.json`
+
+> ICA cookies expire periodically. Refresh them using the parser when the AI stops responding.
+
+---
+
+## AI Assistant — Chat Commands
+
+| Command | What it does |
+|---------|-------------|
+| `scan` | Scan Local Folder for PDFs |
+| `extract` | Run extraction pipeline on all Pending files |
+| `look up [name or ref]` | Display report data in chat |
+| `file status` | Show Pending / Completed counts |
+| `logs this week` | View extraction log history |
 
 ---
 
@@ -125,19 +138,15 @@ Fields detected in the PDF (e.g. `Name`, `Last Name`, `Date of Birth`) become **
 
 | Package | Purpose |
 |---------|---------|
-| `PyMuPDF` | Open, decrypt, and extract text from PDF files |
-| `python-docx` | Generate Word `.docx` export files |
-| `openpyxl` | Excel/CSV workbook support |
-| `boxsdk` | Connect to Box Online and download files via the Box API |
+| `boxsdk` | Box API client |
+| `PyMuPDF` | Open and decrypt PDFs |
+| `python-docx` | Generate Word `.docx` exports |
+| `openpyxl` | Generate Excel `.xlsx` exports |
 
 ---
 
-## Troubleshooting
+## Notes
 
-| Error | Fix |
-|-------|-----|
-| `Box access_token is not set` | Paste your Developer Token into `config.json → box.access_token` |
-| `Could not list Box folder` | Check that your `folder_id` is correct and your token has not expired (Developer Tokens expire after 60 min) |
-| `Incorrect password` | Update `pdf_password` in `config.json` |
-| `No PDF files found` | Confirm the `folder_id` points to the correct Box folder and the folder contains `.pdf` files |
-| `config.json not found` | Make sure `config.json` is in the same folder as the script |
+- Box Developer Tokens expire after **60 minutes**. Refresh `box.access_token` in `config.json` before scanning or extracting.
+- All extraction logs are written to `Log History/YYYY/MMM_YYYY/Week_NN/YYYY-MM-DD/`.
+- V2 is recommended for new deployments — it adds sync, auto-scan, View Extracted Files, and a richer AI chat flow.
