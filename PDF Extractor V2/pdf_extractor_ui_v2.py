@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-16"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-17"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -125,10 +125,91 @@ FONT_SMALL = ("Segoe UI", 9)
 FONT_MONO  = ("Consolas", 9)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Modern panel helper — frame that looks like a soft card
+# RoundedFrame — canvas-backed frame with soft rounded corners
 # ─────────────────────────────────────────────────────────────────────────────
+class RoundedFrame(tk.Canvas):
+    """
+    A tk.Canvas that draws a rounded-rectangle background and hosts an
+    inner tk.Frame for normal widget children.
+
+    Usage:
+        rf = RoundedFrame(parent, radius=12, bg_fill=CLR_CARD,
+                          border_color=CLR_BORDER, border_width=1)
+        rf.pack(...)                        # position the canvas shell
+        child = tk.Label(rf.inner, ...)    # put children in rf.inner
+        child.pack(...)
+    """
+
+    def __init__(self, parent, radius=12, bg_fill=None, border_color=None,
+                 border_width=1, **canvas_kw):
+        bg_fill      = bg_fill      or CLR_CARD
+        border_color = border_color or CLR_BORDER
+        canvas_kw.setdefault("bg", parent.cget("bg") if hasattr(parent, "cget") else CLR_BG)
+        canvas_kw.setdefault("highlightthickness", 0)
+        canvas_kw.setdefault("bd", 0)
+        super().__init__(parent, **canvas_kw)
+        self._r       = radius
+        self._fill    = bg_fill
+        self._border  = border_color
+        self._bw      = border_width
+
+        # Inner frame — pack children here
+        self.inner = tk.Frame(self, bg=bg_fill)
+
+        self.bind("<Configure>", self._redraw)
+
+    def _redraw(self, event=None):
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 4 or h < 4:
+            return
+        self.delete("all")
+        r = min(self._r, w // 2, h // 2)
+        x0, y0, x1, y1 = self._bw, self._bw, w - self._bw, h - self._bw
+        # Draw filled rounded rect
+        self.create_arc(x0, y0, x0+2*r, y0+2*r,
+                        start=90,  extent=90,  fill=self._fill, outline=self._fill)
+        self.create_arc(x1-2*r, y0, x1, y0+2*r,
+                        start=0,   extent=90,  fill=self._fill, outline=self._fill)
+        self.create_arc(x0, y1-2*r, x0+2*r, y1,
+                        start=180, extent=90,  fill=self._fill, outline=self._fill)
+        self.create_arc(x1-2*r, y1-2*r, x1, y1,
+                        start=270, extent=90,  fill=self._fill, outline=self._fill)
+        self.create_rectangle(x0+r, y0, x1-r, y1, fill=self._fill, outline=self._fill)
+        self.create_rectangle(x0, y0+r, x1, y1-r, fill=self._fill, outline=self._fill)
+        # Draw border arcs
+        bw = self._bw
+        bc = self._border
+        self.create_arc(x0, y0, x0+2*r, y0+2*r,
+                        start=90,  extent=90,  style="arc", outline=bc, width=bw)
+        self.create_arc(x1-2*r, y0, x1, y0+2*r,
+                        start=0,   extent=90,  style="arc", outline=bc, width=bw)
+        self.create_arc(x0, y1-2*r, x0+2*r, y1,
+                        start=180, extent=90,  style="arc", outline=bc, width=bw)
+        self.create_arc(x1-2*r, y1-2*r, x1, y1,
+                        start=270, extent=90,  style="arc", outline=bc, width=bw)
+        self.create_line(x0+r, y0, x1-r, y0, fill=bc, width=bw)
+        self.create_line(x0+r, y1, x1-r, y1, fill=bc, width=bw)
+        self.create_line(x0, y0+r, x0, y1-r, fill=bc, width=bw)
+        self.create_line(x1, y0+r, x1, y1-r, fill=bc, width=bw)
+        # Place the inner frame inside the rounded area
+        self.create_window(x0+r//2, y0+r//2, anchor="nw",
+                           window=self.inner,
+                           width=max(1, w - r),
+                           height=max(1, h - r))
+
+    def set_border_color(self, color):
+        self._border = color
+        self._redraw()
+
+    def set_fill(self, color):
+        self._fill = color
+        self.inner.config(bg=color)
+        self._redraw()
+
+
 def _card_frame(parent, **kw):
-    """Return a tk.Frame styled as a modern soft card (white bg, subtle border)."""
+    """Backward-compat helper — returns a plain tk.Frame (for non-card uses)."""
     kw.setdefault("bg", CLR_CARD)
     kw.setdefault("highlightbackground", CLR_BORDER)
     kw.setdefault("highlightthickness", 1)
@@ -587,41 +668,44 @@ class HomeFrame(tk.Frame):
             "[AI]":      "#1A3A6A", "[CHART]":   "#6A4CC4",
         }
         accent = _ICON_COLOURS.get(icon, CLR_ACCENT)
-
-        card = tk.Frame(
-            parent, bg=CLR_CARD, relief="flat", cursor="hand2",
-            highlightbackground=CLR_BORDER, highlightthickness=1,
-        )
-        card.pack(side="left", padx=10, pady=8, ipadx=18, ipady=16)
         nav = lambda e, k=key: self.app._show_frame(k)
-        card.bind("<Button-1>", nav)
 
-        # Hover: lift border colour
-        card.bind("<Enter>", lambda e, c=card: c.config(highlightbackground=CLR_ACCENT))
-        card.bind("<Leave>", lambda e, c=card: c.config(highlightbackground=CLR_BORDER))
+        # Rounded card shell
+        rf = RoundedFrame(parent, radius=14, bg_fill=CLR_CARD,
+                          border_color=CLR_BORDER, border_width=1,
+                          cursor="hand2", width=200, height=140)
+        rf.pack(side="left", padx=10, pady=8)
+        rf.bind("<Button-1>", nav)
+        rf.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+        rf.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
 
-        # Coloured pill at top
-        pill = tk.Frame(card, bg=accent, height=4)
-        pill.pack(fill="x", pady=(0, 10))
+        inner = rf.inner
+        inner.bind("<Button-1>", nav)
+        inner.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+        inner.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
+
+        # Thin coloured top bar inside the rounded card
+        pill = tk.Frame(inner, bg=accent, height=5)
+        pill.pack(fill="x")
         pill.bind("<Button-1>", nav)
 
         lbl_icon = tk.Label(
-            card, text=icon.strip("[]"),
+            inner, text=icon.strip("[]"),
             bg=CLR_CARD, fg=accent,
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 11, "bold"),
             width=16,
         )
-        lbl_title = tk.Label(card, text=title, bg=CLR_CARD, fg=CLR_TEXT,
+        lbl_title = tk.Label(inner, text=title, bg=CLR_CARD, fg=CLR_TEXT,
                              font=FONT_BOLD, width=22)
-        lbl_desc  = tk.Label(card, text=desc,  bg=CLR_CARD, fg=CLR_MUTED,
+        lbl_desc  = tk.Label(inner, text=desc, bg=CLR_CARD, fg=CLR_MUTED,
                              font=FONT_SMALL, justify="center")
-        lbl_icon.pack(pady=(0, 4))
+        lbl_icon.pack(pady=(8, 2))
         lbl_title.pack(pady=(0, 2))
-        lbl_desc.pack(pady=(0, 4))
+        lbl_desc.pack(pady=(0, 8))
         for w in (lbl_icon, lbl_title, lbl_desc):
             w.bind("<Button-1>", nav)
-            w.bind("<Enter>", lambda e, c=card: c.config(highlightbackground=CLR_ACCENT))
-            w.bind("<Leave>", lambda e, c=card: c.config(highlightbackground=CLR_BORDER))
+            w.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+            w.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -669,16 +753,18 @@ class SyncFrame(tk.Frame):
         # ── Log area ──────────────────────────────────────────────────────────
         tk.Label(self, text="Sync Log", bg=CLR_BG,
                  fg=CLR_TEXT, font=FONT_BOLD).pack(anchor="w", padx=24, pady=(10, 2))
-        log_frame = tk.Frame(self, bg=CLR_BG)
-        log_frame.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        log_rf = RoundedFrame(self, radius=10, bg_fill=CLR_CARD,
+                              border_color=CLR_BORDER, border_width=1)
+        log_rf.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        log_inner = log_rf.inner
 
         self._log_box = tk.Text(
-            log_frame, bg=CLR_WHITE, fg=CLR_TEXT,
+            log_inner, bg=CLR_CARD, fg=CLR_TEXT,
             font=FONT_MONO, relief="flat", state="disabled",
-            highlightbackground=CLR_BORDER, highlightthickness=1,
-            padx=8, pady=6,
+            highlightthickness=0, bd=0,
+            padx=10, pady=8,
         )
-        sb = ttk.Scrollbar(log_frame, orient="vertical", command=self._log_box.yview)
+        sb = ttk.Scrollbar(log_inner, orient="vertical", command=self._log_box.yview)
         self._log_box.configure(yscrollcommand=sb.set)
         self._log_box.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
@@ -2691,15 +2777,17 @@ class ChatFrame(tk.Frame):
         tk.Label(hdr, textvariable=self._model_var,
                  bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(side="right", padx=12)
 
-        chat_outer = tk.Frame(self, bg=CLR_BG)
-        chat_outer.pack(fill="both", expand=True, padx=24, pady=(0, 8))
+        chat_rf = RoundedFrame(self, radius=12, bg_fill=CLR_CARD,
+                               border_color=CLR_BORDER, border_width=1)
+        chat_rf.pack(fill="both", expand=True, padx=24, pady=(0, 8))
+        chat_inner = chat_rf.inner
         self._chat_display = tk.Text(
-            chat_outer, bg=CLR_WHITE, fg=CLR_TEXT,
+            chat_inner, bg=CLR_CARD, fg=CLR_TEXT,
             font=("Segoe UI", 10), relief="flat", wrap="word",
-            state="disabled", highlightbackground=CLR_BORDER, highlightthickness=1,
-            padx=12, pady=8, cursor="arrow",
+            state="disabled", highlightthickness=0, bd=0,
+            padx=12, pady=10, cursor="arrow",
         )
-        chat_sb = ttk.Scrollbar(chat_outer, orient="vertical",
+        chat_sb = ttk.Scrollbar(chat_inner, orient="vertical",
                                 command=self._chat_display.yview)
         self._chat_display.configure(yscrollcommand=chat_sb.set)
         self._chat_display.pack(side="left", fill="both", expand=True)
@@ -2712,22 +2800,31 @@ class ChatFrame(tk.Frame):
         self._chat_display.tag_configure("system",     foreground=CLR_MUTED,  font=("Segoe UI",9,"italic"))
         self._chat_display.tag_configure("error",      foreground=CLR_ORANGE, font=("Segoe UI",9,"italic"))
 
-        input_frame = tk.Frame(self, bg=CLR_BG)
-        input_frame.pack(fill="x", padx=24, pady=(0, 16))
+        input_row = tk.Frame(self, bg=CLR_BG)
+        input_row.pack(fill="x", padx=24, pady=(0, 16))
+        # Rounded input box
+        input_rf = RoundedFrame(input_row, radius=10, bg_fill=CLR_CARD,
+                                border_color=CLR_BORDER, border_width=1,
+                                height=40)
+        input_rf.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=0)
         self._input_var = tk.StringVar()
         self._input_box = tk.Entry(
-            input_frame, textvariable=self._input_var,
+            input_rf.inner, textvariable=self._input_var,
             font=("Segoe UI", 10), relief="flat",
-            bg=CLR_WHITE, fg=CLR_TEXT,
-            highlightbackground=CLR_BORDER, highlightthickness=1,
+            bg=CLR_CARD, fg=CLR_TEXT,
+            highlightthickness=0, bd=0,
         )
-        self._input_box.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+        self._input_box.pack(fill="both", expand=True, padx=8, pady=0, ipady=7)
         self._input_box.bind("<Return>", lambda e: self._send())
+        # Focus highlight on input border
+        self._input_box.bind("<FocusIn>",  lambda e: input_rf.set_border_color(CLR_ACCENT))
+        self._input_box.bind("<FocusOut>", lambda e: input_rf.set_border_color(CLR_BORDER))
         self._send_btn = tk.Button(
-            input_frame, text="  Send  ",
+            input_row, text="  Send  ",
             bg=CLR_GREEN, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat", cursor="hand2",
-            padx=10, pady=6, command=self._send,
+            padx=12, pady=8, command=self._send,
+            bd=0, activebackground="#177A40", activeforeground=CLR_WHITE,
         )
         self._send_btn.pack(side="right")
         self._typing_var = tk.StringVar(value="")
