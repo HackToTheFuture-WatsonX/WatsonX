@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-13"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-14"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2178,6 +2178,7 @@ def _find_report_files(query: str) -> list[dict]:
         seen_refs.add(ref)
 
         # Walk from extracted_root to find matching word/excel files
+        ref_folder = jpath.parent   # e.g. .../RN-123456_789_10/
         ref_slug = ref_folder.name
         word_root  = extracted_root / "Word Extracts"
         excel_root = extracted_root / "CSV Extracts"
