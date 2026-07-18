@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-18"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-19"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -313,14 +313,17 @@ def write_extraction_log(ref_number: str, when: datetime, content: str) -> Path:
 def sync_box_to_local(progress_cb=None) -> tuple[int, int, list[str]]:
     """
     Sync all PDF files from the configured Box folder_id into the Local Folder.
+    After each successful download the source file is MOVED to archive_folder_id
+    on Box so it won't be re-downloaded on the next sync.
 
     progress_cb — optional callable(message: str) called for progress updates.
     Returns (downloaded, skipped, error_list).
     """
-    cfg          = _read_config()
-    box_cfg      = cfg["box"]
-    folder_id    = box_cfg.get("folder_id", "0")
-    local_folder = _local_folder()
+    cfg              = _read_config()
+    box_cfg          = cfg["box"]
+    folder_id        = box_cfg.get("folder_id", "0")
+    archive_folder_id = box_cfg.get("archive_folder_id", "")
+    local_folder     = _local_folder()
 
     downloaded = 0
     skipped    = 0
@@ -337,7 +340,7 @@ def sync_box_to_local(progress_cb=None) -> tuple[int, int, list[str]]:
         errors.append(str(exc))
         return 0, 0, errors
 
-    _cb(f"Connecting to Box (folder {folder_id})…")
+    _cb(f"Connecting to Box (source folder {folder_id})…")
 
     try:
         from boxsdk import JWTAuth, Client
@@ -368,6 +371,15 @@ def sync_box_to_local(progress_cb=None) -> tuple[int, int, list[str]]:
                             fh.write(data)
                         downloaded += 1
                         _cb(f"  ✅ Saved: {item.name}")
+                        # ── Move source file to Box Archive ───────────────
+                        if archive_folder_id:
+                            try:
+                                client.file(item.id).move(
+                                    parent_folder=client.folder(archive_folder_id)
+                                )
+                                _cb(f"  📦 Archived on Box: {item.name}")
+                            except Exception as arc_exc:
+                                _cb(f"  ⚠ Archive move failed ({item.name}): {arc_exc}")
                     except Exception as exc:
                         errors.append(f"Download failed ({item.name}): {exc}")
             elif item.type == "folder" and recurse:
