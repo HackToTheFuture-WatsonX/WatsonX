@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-15"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-16"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,18 +97,23 @@ def _archive_folder() -> Path:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Colour palette
+# Colour palette  (modern, soft)
 # ─────────────────────────────────────────────────────────────────────────────
-CLR_BG      = "#F0F4F8"
-CLR_SIDEBAR = "#1F3864"
-CLR_ACCENT  = "#2E75B6"
+CLR_BG      = "#F4F6FA"          # very light blue-grey page bg
+CLR_SIDEBAR = "#1A2B4A"          # deep navy sidebar
+CLR_SIDEBAR_HOVER = "#243C63"    # slightly lighter on hover
+CLR_ACCENT  = "#3B7DD8"          # softer cobalt blue
 CLR_WHITE   = "#FFFFFF"
-CLR_TEXT    = "#1F2328"
-CLR_MUTED   = "#57606A"
-CLR_GREEN   = "#22863A"
-CLR_ORANGE  = "#D1622A"
-CLR_PENDING = "#E6A817"
-CLR_TEAL    = "#0D7377"   # used for Sync button
+CLR_CARD    = "#FFFFFF"          # card / panel surface
+CLR_TEXT    = "#1C2333"          # near-black text
+CLR_MUTED   = "#6B7280"          # grey muted text
+CLR_GREEN   = "#1E8A4C"          # richer green
+CLR_ORANGE  = "#C0511F"          # softer burnt-orange
+CLR_PENDING = "#C9860C"          # amber
+CLR_TEAL    = "#0B8B8B"          # teal for Sync
+
+# Card/panel border — very subtle
+CLR_BORDER  = "#E2E8F0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Font definitions
@@ -118,6 +123,17 @@ FONT_LABEL = ("Segoe UI", 10)
 FONT_BOLD  = ("Segoe UI", 10, "bold")
 FONT_SMALL = ("Segoe UI", 9)
 FONT_MONO  = ("Consolas", 9)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Modern panel helper — frame that looks like a soft card
+# ─────────────────────────────────────────────────────────────────────────────
+def _card_frame(parent, **kw):
+    """Return a tk.Frame styled as a modern soft card (white bg, subtle border)."""
+    kw.setdefault("bg", CLR_CARD)
+    kw.setdefault("highlightbackground", CLR_BORDER)
+    kw.setdefault("highlightthickness", 1)
+    kw.setdefault("relief", "flat")
+    return tk.Frame(parent, **kw)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -333,6 +349,26 @@ class PDFExtractorAppV2(tk.Tk):
         self.configure(bg=CLR_BG)
         self.resizable(True, True)
 
+        # Modern ttk overrides
+        _style = ttk.Style(self)
+        try:
+            _style.theme_use("clam")
+        except Exception:
+            pass
+        _style.configure("TProgressbar",
+                         troughcolor=CLR_BORDER, background=CLR_ACCENT,
+                         bordercolor=CLR_BORDER, lightcolor=CLR_ACCENT,
+                         darkcolor=CLR_ACCENT, thickness=6)
+        _style.configure("TSeparator",  background=CLR_BORDER)
+        _style.configure("Vertical.TScrollbar",
+                         background=CLR_BG, troughcolor=CLR_BORDER,
+                         bordercolor=CLR_BORDER, arrowcolor=CLR_MUTED,
+                         gripcount=0)
+        _style.configure("Horizontal.TScrollbar",
+                         background=CLR_BG, troughcolor=CLR_BORDER,
+                         bordercolor=CLR_BORDER, arrowcolor=CLR_MUTED,
+                         gripcount=0)
+
         self.db = load_tracking()
 
         self._build_layout()
@@ -393,60 +429,75 @@ class PDFExtractorAppV2(tk.Tk):
     # ── Layout construction ───────────────────────────────────────────────────
     def _build_layout(self):
         # ── Sidebar ───────────────────────────────────────────────────────────
-        sidebar = tk.Frame(self, bg=CLR_SIDEBAR, width=210)
+        sidebar = tk.Frame(self, bg=CLR_SIDEBAR, width=220)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
+        # App title in sidebar
         tk.Label(
             sidebar,
             text="Background Check\nReport Automation V2",
             bg=CLR_SIDEBAR, fg=CLR_WHITE,
             font=("Segoe UI", 11, "bold"),
-            pady=20,
-        ).pack(fill="x")
+            pady=22,
+        ).pack(fill="x", padx=4)
 
-        ttk.Separator(sidebar, orient="horizontal").pack(fill="x", padx=12)
+        # Thin separator line
+        tk.Frame(sidebar, bg="#2E4A70", height=1).pack(fill="x", padx=16, pady=(0, 4))
 
         nav_items = [
-            ("  Home",                    "home"),
-            ("  Scan Local Folder",       "scan"),
-            ("  Sync Box to Local",       "sync"),
-            ("  Extract Files",           "extract"),
-            ("  View Extracted Files",    "view"),
-            ("  Chat with AI Assistant",  "chat"),
+            ("\u2302  Home",                    "home"),
+            ("\u229e  Scan Local Folder",       "scan"),
+            ("\u21bb  Sync Box to Local",       "sync"),
+            ("\u2699  Extract Files",           "extract"),
+            ("\u25a4  View Extracted Files",    "view"),
+            ("\u2662  Chat with AI Assistant",  "chat"),
         ]
         self._nav_btns = {}
         for label, key in nav_items:
             btn = tk.Button(
                 sidebar,
                 text=label,
-                bg=CLR_SIDEBAR, fg=CLR_WHITE,
+                bg=CLR_SIDEBAR, fg="#CBD5E1",
                 font=FONT_LABEL,
-                anchor="w", padx=16, pady=10,
+                anchor="w", padx=18, pady=11,
                 relief="flat", cursor="hand2",
-                activebackground=CLR_ACCENT,
+                activebackground=CLR_SIDEBAR_HOVER,
                 activeforeground=CLR_WHITE,
                 command=lambda k=key: self._show_frame(k),
+                bd=0,
             )
             btn.pack(fill="x")
+            # Hover glow
+            btn.bind("<Enter>", lambda e, b=btn, k=key: (
+                b.config(bg=CLR_SIDEBAR_HOVER, fg=CLR_WHITE)
+                if b.cget("bg") != CLR_ACCENT else None
+            ))
+            btn.bind("<Leave>", lambda e, b=btn, k=key: (
+                b.config(bg=CLR_ACCENT if self._nav_btns.get(k) and
+                         self._nav_btns[k].cget("bg") == CLR_ACCENT
+                         else CLR_SIDEBAR, fg="#CBD5E1"
+                         if self._nav_btns.get(k) and
+                         self._nav_btns[k].cget("bg") != CLR_ACCENT else CLR_WHITE)
+            ))
             self._nav_btns[key] = btn
 
         # ── Version / patch badge ─────────────────────────────────────────────
-        ver_frame = tk.Frame(sidebar, bg="#0F2030",
-                             highlightbackground="#1E3A50", highlightthickness=1)
-        ver_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+        ver_frame = tk.Frame(sidebar, bg="#0F1E35",
+                             highlightbackground="#1E3A55", highlightthickness=1)
+        ver_frame.pack(side="bottom", fill="x", padx=12, pady=12)
         tk.Label(
             ver_frame,
             text=f"v{APP_VERSION}  ·  {BUILD_PATCH}",
-            bg="#0F2030", fg="#5BA4CF",
-            font=("Consolas", 9, "bold"),
-            pady=5,
+            bg="#0F1E35", fg="#6EA8D8",
+            font=("Segoe UI", 9, "bold"),
+            pady=6,
         ).pack()
         tk.Label(
             ver_frame,
             text=BUILD_DATE,
-            bg="#0F2030", fg="#3D6E8A",
-            font=("Consolas", 8),
+            bg="#0F1E35", fg="#3A6080",
+            font=("Segoe UI", 8),
             pady=2,
         ).pack()
 
@@ -470,7 +521,10 @@ class PDFExtractorAppV2(tk.Tk):
 
     def _show_frame(self, key: str):
         for k, btn in self._nav_btns.items():
-            btn.config(bg=CLR_ACCENT if k == key else CLR_SIDEBAR)
+            if k == key:
+                btn.config(bg=CLR_ACCENT, fg=CLR_WHITE)
+            else:
+                btn.config(bg=CLR_SIDEBAR, fg="#CBD5E1")
         frame = self._frames[key]
         frame.lift()
         if hasattr(frame, "on_show"):
@@ -485,23 +539,31 @@ class HomeFrame(tk.Frame):
         super().__init__(parent, bg=CLR_BG)
         self.app = app
 
+        # Page heading
         tk.Label(
             self,
             text="Background Check Report Automation V2",
             bg=CLR_BG, fg=CLR_MUTED,
-            font=("Segoe UI", 12),
-        ).pack(pady=(40, 6))
+            font=("Segoe UI", 13),
+        ).pack(pady=(44, 4))
+        tk.Label(
+            self,
+            text="Select a step below to begin",
+            bg=CLR_BG, fg="#A0AEC0",
+            font=("Segoe UI", 9),
+        ).pack(pady=(0, 4))
 
-        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=80, pady=20)
+        # Thin divider
+        tk.Frame(self, bg=CLR_BORDER, height=1).pack(fill="x", padx=100, pady=18)
 
         # ── Row 1: Scan → Sync → Extract (steps 1-3) ─────────────────────────
         row1 = tk.Frame(self, bg=CLR_BG)
         row1.pack()
         for icon, title, desc, key in [
             ("[SCAN]",    "Scan Local Folder",
-             "Scan Local Folder for PDFs\nand view their status.",        "scan"),
+             "Scan Local Folder for PDFs\nand view their status.",         "scan"),
             ("[SYNC]",    "Sync Box to Local",
-             "Download PDFs from Box\ninto the Local Folder.",            "sync"),
+             "Download PDFs from Box\ninto the Local Folder.",             "sync"),
             ("[EXTRACT]", "Extract Files",
              "Run extraction on Local Folder\nand upload outputs to Box.", "extract"),
         ]:
@@ -509,47 +571,57 @@ class HomeFrame(tk.Frame):
 
         # ── Row 2: View → Chat (steps 4-5) ───────────────────────────────────
         row2 = tk.Frame(self, bg=CLR_BG)
-        row2.pack(pady=(0, 10))
+        row2.pack(pady=(6, 10))
         for icon, title, desc, key in [
             ("[VIEW]",    "View Extracted Files",
-             "Browse extracted Word / Excel\nand JSON files by type.",    "view"),
+             "Browse extracted Word / Excel\nand JSON files by type.",     "view"),
             ("[AI]",      "Chat with AI Assistant",
-             "Chat with IBM Consulting\nAdvantage AI assistant.",         "chat"),
+             "Ask questions grounded on\nextracted JSON reports.",         "chat"),
         ]:
             self._make_card(row2, icon, title, desc, key)
 
     def _make_card(self, parent, icon, title, desc, key):
+        _ICON_COLOURS = {
+            "[SCAN]":    "#3B7DD8", "[SYNC]":    "#0B8B8B",
+            "[EXTRACT]": "#1E8A4C", "[VIEW]":    "#9B5A1A",
+            "[AI]":      "#1A3A6A", "[CHART]":   "#6A4CC4",
+        }
+        accent = _ICON_COLOURS.get(icon, CLR_ACCENT)
+
         card = tk.Frame(
-            parent, bg=CLR_WHITE, relief="flat", cursor="hand2",
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            parent, bg=CLR_CARD, relief="flat", cursor="hand2",
+            highlightbackground=CLR_BORDER, highlightthickness=1,
         )
-        card.pack(side="left", padx=12, pady=8, ipadx=16, ipady=14)
+        card.pack(side="left", padx=10, pady=8, ipadx=18, ipady=16)
         nav = lambda e, k=key: self.app._show_frame(k)
         card.bind("<Button-1>", nav)
 
-        # Coloured accent square instead of emoji
-        _ICON_COLOURS = {
-            "[SCAN]":    "#2E75B6", "[SYNC]":    "#0D7377",
-            "[EXTRACT]": "#22863A", "[VIEW]":    "#B45309",
-            "[AI]":      "#1F3864", "[CHART]":   "#7C5CD8",
-        }
-        accent = _ICON_COLOURS.get(icon, CLR_ACCENT)
+        # Hover: lift border colour
+        card.bind("<Enter>", lambda e, c=card: c.config(highlightbackground=CLR_ACCENT))
+        card.bind("<Leave>", lambda e, c=card: c.config(highlightbackground=CLR_BORDER))
+
+        # Coloured pill at top
+        pill = tk.Frame(card, bg=accent, height=4)
+        pill.pack(fill="x", pady=(0, 10))
+        pill.bind("<Button-1>", nav)
+
         lbl_icon = tk.Label(
             card, text=icon.strip("[]"),
-            bg=accent, fg=CLR_WHITE,
-            font=("Segoe UI", 9, "bold"),
-            width=8, pady=6,
+            bg=CLR_CARD, fg=accent,
+            font=("Segoe UI", 10, "bold"),
+            width=16,
         )
-        lbl_title = tk.Label(card, text=title, bg=CLR_WHITE, fg=CLR_TEXT,
+        lbl_title = tk.Label(card, text=title, bg=CLR_CARD, fg=CLR_TEXT,
                              font=FONT_BOLD, width=22)
-        lbl_desc  = tk.Label(card, text=desc,  bg=CLR_WHITE, fg=CLR_MUTED,
+        lbl_desc  = tk.Label(card, text=desc,  bg=CLR_CARD, fg=CLR_MUTED,
                              font=FONT_SMALL, justify="center")
-        lbl_icon.pack(pady=(0, 6))
+        lbl_icon.pack(pady=(0, 4))
         lbl_title.pack(pady=(0, 2))
-        lbl_desc.pack()
-        lbl_icon.bind("<Button-1>", nav)
-        lbl_title.bind("<Button-1>", nav)
-        lbl_desc.bind("<Button-1>", nav)
+        lbl_desc.pack(pady=(0, 4))
+        for w in (lbl_icon, lbl_title, lbl_desc):
+            w.bind("<Button-1>", nav)
+            w.bind("<Enter>", lambda e, c=card: c.config(highlightbackground=CLR_ACCENT))
+            w.bind("<Leave>", lambda e, c=card: c.config(highlightbackground=CLR_BORDER))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -603,7 +675,7 @@ class SyncFrame(tk.Frame):
         self._log_box = tk.Text(
             log_frame, bg=CLR_WHITE, fg=CLR_TEXT,
             font=FONT_MONO, relief="flat", state="disabled",
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            highlightbackground=CLR_BORDER, highlightthickness=1,
             padx=8, pady=6,
         )
         sb = ttk.Scrollbar(log_frame, orient="vertical", command=self._log_box.yview)
@@ -732,7 +804,7 @@ class ScanFolderFrame(tk.Frame):
             table_frame,
             text="No PDF files found in Local Folder",
             bg=CLR_WHITE, fg=CLR_MUTED, font=("Segoe UI", 11),
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            highlightbackground=CLR_BORDER, highlightthickness=1,
         )
 
     def on_show(self):
@@ -880,7 +952,7 @@ class InsightsFrame(tk.Frame):
 
         self._canvas = tk.Canvas(
             self, bg=CLR_WHITE,
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            highlightbackground=CLR_BORDER, highlightthickness=1,
         )
         self._canvas.pack(fill="both", expand=True, padx=24, pady=(0, 20))
         self._canvas.bind("<Configure>", lambda e: self._draw_chart())
@@ -1086,7 +1158,7 @@ class ViewExtractedFrame(tk.Frame):
                 grp.pack(fill="x", padx=4, pady=(4, 0))
                 tk.Label(
                     grp, text=f"  📁  {ref_key}",
-                    bg="#F0F4FF", fg=CLR_ACCENT, font=FONT_LABEL, anchor="w",
+                    bg="#EEF4FF", fg=CLR_ACCENT, font=FONT_LABEL, anchor="w",
                 ).pack(fill="x", padx=4, pady=2)
 
                 for fpath in ref_files:
@@ -1096,7 +1168,7 @@ class ViewExtractedFrame(tk.Frame):
                     lbl = tk.Label(
                         row,
                         text=f"  {fpath.name}",
-                        bg=CLR_WHITE, fg="#2E75B6",
+                        bg=CLR_WHITE, fg=CLR_ACCENT,
                         font=("Segoe UI", 9, "underline"),
                         anchor="w", cursor="hand2",
                     )
@@ -1199,7 +1271,7 @@ class ExtractFrame(tk.Frame):
         colour = CLR_GREEN if ok else CLR_ORANGE
         card = tk.Frame(
             self._results_frame, bg=CLR_WHITE,
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            highlightbackground=CLR_BORDER, highlightthickness=1,
         )
         card.pack(fill="x", pady=4, ipady=8, ipadx=10)
         top = tk.Frame(card, bg=CLR_WHITE)
@@ -2624,7 +2696,7 @@ class ChatFrame(tk.Frame):
         self._chat_display = tk.Text(
             chat_outer, bg=CLR_WHITE, fg=CLR_TEXT,
             font=("Segoe UI", 10), relief="flat", wrap="word",
-            state="disabled", highlightbackground="#E5E7EB", highlightthickness=1,
+            state="disabled", highlightbackground=CLR_BORDER, highlightthickness=1,
             padx=12, pady=8, cursor="arrow",
         )
         chat_sb = ttk.Scrollbar(chat_outer, orient="vertical",
@@ -2632,11 +2704,11 @@ class ChatFrame(tk.Frame):
         self._chat_display.configure(yscrollcommand=chat_sb.set)
         self._chat_display.pack(side="left", fill="both", expand=True)
         chat_sb.pack(side="right", fill="y")
-        self._chat_display.tag_configure("user",       foreground="#1F3864", font=("Segoe UI",10,"bold"))
-        self._chat_display.tag_configure("assistant",  foreground="#22863A", font=("Segoe UI",10))
-        self._chat_display.tag_configure("asst_bold",  foreground="#22863A", font=("Segoe UI",10,"bold"))
-        self._chat_display.tag_configure("asst_italic",foreground="#22863A", font=("Segoe UI",10,"italic"))
-        self._chat_display.tag_configure("asst_hr",    foreground="#AAAAAA", font=("Segoe UI",9))
+        self._chat_display.tag_configure("user",       foreground=CLR_ACCENT,  font=("Segoe UI",10,"bold"))
+        self._chat_display.tag_configure("assistant",  foreground=CLR_GREEN,   font=("Segoe UI",10))
+        self._chat_display.tag_configure("asst_bold",  foreground=CLR_GREEN,   font=("Segoe UI",10,"bold"))
+        self._chat_display.tag_configure("asst_italic",foreground=CLR_GREEN,   font=("Segoe UI",10,"italic"))
+        self._chat_display.tag_configure("asst_hr",    foreground=CLR_BORDER,  font=("Segoe UI",9))
         self._chat_display.tag_configure("system",     foreground=CLR_MUTED,  font=("Segoe UI",9,"italic"))
         self._chat_display.tag_configure("error",      foreground=CLR_ORANGE, font=("Segoe UI",9,"italic"))
 
@@ -2647,7 +2719,7 @@ class ChatFrame(tk.Frame):
             input_frame, textvariable=self._input_var,
             font=("Segoe UI", 10), relief="flat",
             bg=CLR_WHITE, fg=CLR_TEXT,
-            highlightbackground="#E5E7EB", highlightthickness=1,
+            highlightbackground=CLR_BORDER, highlightthickness=1,
         )
         self._input_box.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
         self._input_box.bind("<Return>", lambda e: self._send())
