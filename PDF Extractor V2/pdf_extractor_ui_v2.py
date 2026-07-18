@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-14"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-15"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2683,7 +2683,7 @@ class ChatFrame(tk.Frame):
                 and ic.get("chat_id", "") != ""
             )
             if ica_ok:
-                self._model_var.set("Model: IBM Consulting Advantage")
+                self._model_var.set("ICA Agent  ·  Llama 3.1 14b")
             else:
                 self._model_var.set("AI: add ICA credentials in config.json")
         except Exception:

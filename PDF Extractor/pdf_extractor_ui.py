@@ -2261,7 +2261,7 @@ class ChatFrame(tk.Frame):
                 and ic.get("chat_id", "") != ""
             )
             if ica_ok:
-                self._model_var.set("Model: IBM Consulting Advantage")
+                self._model_var.set("ICA Agent  ·  Llama 3.1 14b")
             else:
                 self._model_var.set("AI: add ICA credentials in config.json")
         except Exception:
