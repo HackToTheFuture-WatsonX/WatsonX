@@ -1,137 +1,152 @@
-# Background Check Report Automation — Documentation
+# PDF Extractor V3 — Overview
 
-> **Think of this system like a smart postal clerk for background checks.**
-> Reports arrive sealed (encrypted PDFs) in a digital mailbox (IBM Box). The system opens each envelope, reads the contents, neatly fills out structured forms (Word, Excel, JSON), files them in dated folders, and sends copies back to the right place — all while an AI assistant stands by to answer questions about any report.
-
----
-
-## What Is It?
-
-The **Background Check Report Automation** system automates the entire lifecycle of background check PDF reports issued by Corpnet Global Corp. Instead of manually opening, reading, and re-typing data from each PDF, this system:
-
-1. Connects to **IBM Box** and finds new PDF reports
-2. **Decrypts** password-protected files
-3. **Parses** all structured data (employment checks, reference checks, database checks)
-4. **Exports** clean Word, Excel, and JSON versions of each report
-5. **Archives** the source PDF and uploads outputs back to Box
-6. Makes every report searchable through an **AI chat assistant**
+> **Think of V3 like a self-contained appliance.**
+> Previous versions required Python installed on your machine. V3 ships everything bundled inside a single `.exe` — open it, configure it once through the GUI, and it runs. It is a background check processing station you can carry on a USB drive.
 
 ---
 
-## Who Uses It?
+## What Is PDF Extractor V3?
 
-| Role | How They Use It |
-|------|----------------|
-| **HR / Operations staff** | Scan for new reports, run extractions, track status |
-| **Managers / Stakeholders** | View Insights charts, check file status at a glance |
-| **Compliance / Auditors** | Access structured Word / Excel exports for review |
-| **AI power users** | Chat with the assistant to look up specific reports instantly |
+PDF Extractor V3 is a **fully portable Electron desktop application** that automates the complete lifecycle of background check PDF reports. It is the third and most capable generation of the extractor series, replacing the Tkinter-based GUI of V2 with a modern **React + TypeScript** interface backed by a standalone **FastAPI + SocketIO** Python server — all packaged so that the target machine needs no Python, no Node.js, and no external browser.
+
+All application data — configuration, file tracking state, JWT credentials, and extraction logs — is stored in a single **SQLite database** (`pdf_extractor_v3.db`) inside the user data directory. There are no loose JSON files to manage.
 
 ---
 
-## Three Applications, One Shared Engine
+## Core Value Proposition
+
+| Without V3 | With V3 |
+|---|---|
+| Manually open each PDF, re-type data | One click processes all pending reports |
+| Hunt for output files across folders | Centralised view grouped by reference |
+| No live progress visibility | Real-time streaming events during sync/extract |
+| Reports locked in PDFs | Searchable Word, Excel, and JSON outputs |
+| Separate Python install per machine | Single portable `.exe` — zero dependencies |
+| Hand-edit `config.json` files | Full GUI Settings page with live connection tests |
+
+---
+
+## High-Level System Diagram
 
 ```mermaid
 graph TD
-    ENGINE["⚙️ Shared Engine\npdf_text_extractor.py\n(Parse · Export · Box)"]
-    V1["🖥️ PDF Extractor V1\nDesktop · Tkinter\nBox OAuth2"]
-    V2["🖥️ PDF Extractor V2\nDesktop · Tkinter\nLocal Sync · File Browser"]
-    V3["🖥️ PDF Extractor V3\nElectron + React\nPortable .exe · REST API · SocketIO"]
-    WEB["🌐 WatsonX Challenge - Web\nBrowser · Flask\nJWT · watsonx AI"]
+    User["👤 HR / Operations User"]
+    App["🖥️ Electron Shell\nChromium + Node.js bundled"]
+    React["⚛️ React 18 Frontend\nTypeScript · Vite · Tailwind\n8 pages"]
+    Backend["🐍 FastAPI + SocketIO Backend\nPython — bundled as backend.exe"]
+    DB[("🗄️ SQLite Database\npdf_extractor_v3.db\nConfig · Tracking · JWT · Logs")]
+    Box["☁️ IBM Box\nCloud Storage"]
+    ICA["🤖 IBM Consulting Advantage\nAI Chat Service"]
+    Exports["📁 Local File System\nWord · Excel · JSON exports"]
 
-    V1 --> ENGINE
-    V2 --> ENGINE
-    V3 --> ENGINE
-    WEB --> |"importlib"| ENGINE
+    User -->|"clicks"| App
+    App -->|"loads renderer"| React
+    React -->|"REST + WebSocket"| Backend
+    Backend -->|"read / write"| DB
+    Backend -->|"JWT auth · download / upload"| Box
+    Backend -->|"cookie-based HTTP"| ICA
+    Backend -->|"write exports"| Exports
 ```
 
-| Application | Type | Key Differentiator |
+---
+
+## Who Uses V3?
+
+| Role | Primary Actions |
+|---|---|
+| **HR / Operations staff** | Sync from Box, scan folder, run extraction, view results |
+| **Managers / Stakeholders** | Check Insights dashboard for completion stats |
+| **Compliance reviewers** | Open Word or Excel exports directly from the View page |
+| **Power users** | Chat with Detective Conan to look up report details conversationally |
+
+---
+
+## What Changed from V2 to V3
+
+| Capability | V2 | V3 |
 |---|---|---|
-| **PDF Extractor V1** | Desktop (Tkinter) | Lightweight; scan directly from Box via Developer Token |
-| **PDF Extractor V2** | Desktop (Tkinter) | Adds local sync, auto-scan, file browser, Box upload |
-| **PDF Extractor V3** | Desktop (Electron + React) | Portable `.exe`; REST API; real-time SocketIO; GUI settings; ICA chat |
-| **WatsonX Challenge - Web** | Web App (Flask) | Browser UI; JWT auth; watsonx Orchestrate + multi-AI fallback |
-
-All three produce **identical structured output** because they share the same parsing engine.
-
----
-
-## Documentation Structure
-
-```
-docs/
-├── README.md                  ← You are here — system overview and navigation
-│
-├── shared/                    ← Common engine used by all apps
-│   ├── README.md              ← Shared engine overview
-│   ├── data-flow.md           ← PDF → JSON data transformation (DFD)
-│   └── specifications.md      ← Shared requirements, constraints, glossary
-│
-├── pdf-extractor-v1/          ← PDF Extractor V1 (Desktop)
-│   ├── README.md
-│   ├── features.md
-│   ├── system-design.md
-│   ├── process-flows.md
-│   └── improvements.md
-│
-├── pdf-extractor-v2/          ← PDF Extractor V2 (Desktop)
-│   ├── README.md
-│   ├── features.md
-│   ├── system-design.md
-│   ├── process-flows.md
-│   └── improvements.md
-│
-├── pdf-extractor-v3/          ← PDF Extractor V3 (Electron + React, portable .exe)
-│   ├── README.md
-│   ├── features.md
-│   ├── system-design.md
-│   ├── process-flows.md
-│   └── improvements.md
-│
-└── watsonx-web/               ← WatsonX Challenge - Web App
-    ├── README.md
-    ├── features.md
-    ├── system-design.md
-    ├── process-flows.md
-    └── improvements.md
-```
+| UI framework | Tkinter (Windows native) | React + Tailwind (Chromium-rendered) |
+| Distribution | Requires Python installed | Single portable `.exe` — zero dependencies |
+| Persistence | `config.json` + `tracking_db.json` files | SQLite database (`pdf_extractor_v3.db`) |
+| Extraction logs | Filesystem `.log` files in `Log History/` | Rows in `extraction_logs` SQLite table |
+| JWT config | `box_jwt_config.json` file | Stored in `jwt_config` SQLite table |
+| Live progress | Log text box updated synchronously | SocketIO events streamed in real time |
+| AI assistant | Embedded Tkinter chat frame | Dedicated Chat page with bubble UI |
+| Settings management | Hand-edit `config.json` | GUI Settings page with masked secrets + live tests |
+| ICA login | Manual cookie copy-paste | Electron browser window auto-captures credentials |
+| Theme | System default only | Dark / light toggle, persisted to localStorage |
+| API | None (in-process function calls) | Full REST API at `/docs` — testable with any HTTP client |
 
 ---
 
-## Quick Links
+## Distributable Files
 
-### Shared Engine
-- [Shared Engine Overview](shared/README.md)
-- [Data Flow & JSON Schema](shared/data-flow.md)
-- [Shared Specifications & Glossary](shared/specifications.md)
+After running `build_all.bat` two ready-to-ship files are produced:
 
-### PDF Extractor V1
-- [V1 Overview & Quick Start](pdf-extractor-v1/README.md)
-- [V1 Features](pdf-extractor-v1/features.md)
-- [V1 System Design](pdf-extractor-v1/system-design.md)
-- [V1 Process Flows](pdf-extractor-v1/process-flows.md)
-- [V1 Improvements](pdf-extractor-v1/improvements.md)
+| File | Description |
+|---|---|
+| `electron/dist/PDF-Extractor-V3-Setup-3.0.0.exe` | NSIS installer — installs to Program Files, adds Start Menu + Desktop shortcuts |
+| `electron/dist/PDF-Extractor-V3-Portable-3.0.0.exe` | Single-file portable — run from anywhere (USB drive, shared folder, no install) |
 
-### PDF Extractor V2
-- [V2 Overview & Quick Start](pdf-extractor-v2/README.md)
-- [V2 Features](pdf-extractor-v2/features.md)
-- [V2 System Design](pdf-extractor-v2/system-design.md)
-- [V2 Process Flows](pdf-extractor-v2/process-flows.md)
-- [V2 Improvements](pdf-extractor-v2/improvements.md)
+Both are fully self-contained: Python interpreter, all packages, and Chromium are bundled inside — nothing needs to be installed on the target machine.
 
-### PDF Extractor V3
-- [V3 Overview](pdf-extractor-v3/README.md)
-- [V3 User Guide](pdf-extractor-v3/user-guide.md) ← **Start here for end-user instructions**
-- [V3 Features](pdf-extractor-v3/features.md)
-- [V3 System Design](pdf-extractor-v3/system-design.md)
-- [V3 Data Flow](pdf-extractor-v3/data-flow.md)
-- [V3 Process Flows](pdf-extractor-v3/process-flows.md)
-- [V3 Specifications](pdf-extractor-v3/specifications.md)
-- [V3 Improvements](pdf-extractor-v3/improvements.md)
+---
 
-### WatsonX Challenge - Web
-- [Web App Overview & Quick Start](watsonx-web/README.md)
-- [Web App Features](watsonx-web/features.md)
-- [Web App System Design](watsonx-web/system-design.md)
-- [Web App Process Flows](watsonx-web/process-flows.md)
-- [Web App Improvements](watsonx-web/improvements.md)
+## User Data Location
+
+All data lives at `%APPDATA%\PDF Extractor V3\` (created automatically on first launch):
+
+```
+%APPDATA%\PDF Extractor V3\
+├── pdf_extractor_v3.db      ← single SQLite database (config, tracking, JWT, logs)
+├── ica.log                  ← ICA HTTP request/response debug log (plain text)
+└── Local Folder\
+    ├── *.pdf                ← synced PDFs waiting for extraction
+    ├── Extracted\
+    │   ├── Word Extracts\   ← .docx exports (dated hierarchy)
+    │   ├── CSV Extracts\    ← .xlsx exports (dated hierarchy)
+    │   └── JSON File Extracts\  ← .json exports (dated hierarchy)
+    └── Archive\             ← source PDFs after successful extraction
+```
+
+> **No loose config files to manage.** Configuration, tracking state, Box JWT credentials, and extraction logs are all stored in `pdf_extractor_v3.db`. The database is created automatically and managed entirely by the application.
+
+---
+
+## Quick Start
+
+See the **[User Guide](user-guide.md)** for full step-by-step instructions. Summary:
+
+1. **Launch** the `.exe` → wait for the splash screen to clear (~5–10 s on first launch)
+2. **Settings** → fill in PDF password, Box folder IDs, upload JWT config, sign in to ICA
+3. **Sync** → download new PDFs from Box
+4. **Scan** → register PDFs in the tracking database
+5. **Extract** → run the extraction pipeline; outputs saved as Word, Excel, JSON
+6. **View** → browse and open extracted files
+7. **Insights** → check completion stats and charts
+8. **Chat** → ask Detective Conan about any report
+
+---
+
+## Development Mode
+
+Run from source without building the `.exe` (requires Python 3.12 and Node.js):
+
+```bat
+cd "PDF Extractor V3"
+python start_v3.py
+```
+
+---
+
+## Documentation Index
+
+| Document | Contents |
+|---|---|
+| **[User Guide](user-guide.md)** | Step-by-step instructions for every page |
+| [Features](features.md) | Per-feature breakdown with flow diagrams |
+| [System Design](system-design.md) | Architecture, all modules, API reference, design decisions |
+| [Data Flow](data-flow.md) | How PDFs become structured JSON — DFD Levels 0–2 |
+| [Process Flows](process-flows.md) | Startup, setup, full pipeline, and streaming event sequences |
+| [Specifications](specifications.md) | Functional requirements, non-functional requirements, glossary |
+| [Improvements](improvements.md) | Observations, gaps, and enhancement opportunities |
