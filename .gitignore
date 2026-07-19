@@ -16,6 +16,14 @@ env/
 # Box JWT private key file (contains an encrypted RSA private key + passphrase)
 box_jwt_config.json
 
+# App config files contain live Box secrets + ICA session cookies. NEVER commit.
+# Commit a config.example.json / config.template.json instead (see !exceptions below).
+config.json
+**/config.json
+!**/config.example.json
+!**/config.template.json
+
+
 # -- PyInstaller build artifacts -----------------------------------------------
 *.spec
 build/
@@ -49,6 +57,6 @@ PDF Extractor/Local Folder/
 # -- ICA cookie parser (local tool only) --------------------------------------
 ICA Cookie Parser/
 
-# -- Retired versions — kept locally, never push to remote --------------------
+# -- Retired versions â€” kept locally, never push to remote --------------------
 PDF Extractor/
 WatsonX Challenge - Web/
