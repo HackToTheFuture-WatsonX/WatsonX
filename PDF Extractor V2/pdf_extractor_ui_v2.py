@@ -51,7 +51,7 @@ import re as _re_ai
 # ─────────────────────────────────────────────────────────────────────────────
 APP_VERSION  = "2.1.0"
 BUILD_DATE   = "2026-07-18"
-BUILD_PATCH  = "patch-19"           # increment each hotfix: patch-01, patch-02 …
+BUILD_PATCH  = "patch-20"           # increment each hotfix: patch-01, patch-02 …
 
 # Module-level path constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2671,23 +2671,47 @@ def _skill_open_report(subject_query: str, file_type: str) -> str:
     )
 
 
+def _kw_match(lower: str, *keywords: str) -> bool:
+    """
+    Return True if any keyword matches in *lower* as a whole-word phrase.
+    Multi-word phrases (e.g. "sync folder") are matched literally;
+    single words (e.g. "sync") are matched with word boundaries so
+    "sync" does NOT match inside "synchronize" or "extracted".
+    """
+    import re as _re_kw
+    for kw in keywords:
+        if " " in kw:
+            # multi-word: simple substring is fine (already specific enough)
+            if kw in lower:
+                return True
+        else:
+            # single word: require word boundaries
+            if _re_kw.search(r"\b" + _re_kw.escape(kw) + r"\b", lower):
+                return True
+    return False
+
+
 def route_chat_message(message: str, history: list[dict]) -> str:
     history = _sanitize_history(history)
     lower   = message.lower()
 
-    # 1. Sync
-    if any(kw in lower for kw in ("sync folder","sync now","sync box","sync","synchronise","synchronize")):
+    # 1. Sync — whole-word only; "synchronize"/"synchronise" matched explicitly
+    if _kw_match(lower,
+                 "sync folder", "sync now", "sync box",
+                 "synchronise", "synchronize", "sync"):
         return trigger_sync_for_chat()
 
-    # 2. Scan
-    if any(kw in lower for kw in ("scan box","scan folder","check box","scan","rescan")):
+    # 2. Scan — whole-word only
+    if _kw_match(lower,
+                 "scan box", "scan folder", "check box",
+                 "rescan", "scan"):
         return trigger_scan_for_chat()
 
-    # 3. Extraction
-    if any(kw in lower for kw in (
-        "run extract","start extract","extract now","extract files",
-        "run pipeline","extract","process files","process reports",
-    )):
+    # 3. Extraction — "extract" whole-word only; NOT triggered by "extracted"/"extraction"
+    if _kw_match(lower,
+                 "run extract", "start extract", "extract now", "extract files",
+                 "run pipeline", "process files", "process reports",
+                 "extract"):
         return trigger_extraction_for_chat()
 
     # 4. File status
