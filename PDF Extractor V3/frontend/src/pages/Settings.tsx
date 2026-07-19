@@ -501,7 +501,7 @@ export default function Settings() {
                        text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
             placeholder="Paste your full ICA session cookie…"
             value={cfg.ica.full_cookie}
-            onChange={e => patch('ica', 'full_cookie', e.target.value.trim())}
+            onChange={e => patch('ica', 'full_cookie', e.target.value)}
           />
         </div>
         <div className="mt-3 flex items-center gap-3">

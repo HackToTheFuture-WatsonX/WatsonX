@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # We return a boolean-ish marker instead so the UI can show "configured".
 _SECRET_PATHS = [
     ("pdf_password",),
+    ("ica", "full_cookie"),
 ]
 
 
