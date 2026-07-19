@@ -67,6 +67,9 @@ build/
 pdf_extractor_v3.db*
 PDF Extractor/
 WatsonX Challenge - Web/
+pdf-extractor-v3-plan.md
+INSTALLATION.txt
+install.cmd
 
 # -- PDF Extractor V3 build artifacts (never commit generated output) ----------
 # PyInstaller-bundled backend (~1000 files: DLLs, tzdata, dist-info)
