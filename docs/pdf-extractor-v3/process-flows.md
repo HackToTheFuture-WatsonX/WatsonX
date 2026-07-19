@@ -1,14 +1,12 @@
 # PDF Extractor V3 — Process & User Flows
 
-## Overview
-
-This document traces the major journeys through V3 — from first launch to a completed extraction — and the critical backend paths that power them.
+This document traces the major journeys through V3 — from first launch to a completed extraction run — along with the critical backend event sequences.
 
 ---
 
-## 1. Application Startup Flow
+## 1. Application Startup
 
-The sequence from double-clicking the `.exe` to a fully interactive window.
+From double-clicking the `.exe` to a fully interactive window.
 
 ```mermaid
 sequenceDiagram
@@ -19,85 +17,88 @@ sequenceDiagram
     participant UI as React Renderer
 
     User->>Electron: Double-click .exe
-    Electron->>Electron: findFreePort(8765)\nskip 5000/8080/47321
+    Electron->>Electron: findFreePort(8765)\nskip 5000 / 8080 / 47321
     Electron->>FS: Write .v3_port file
-    Electron->>FS: ensureUserConfig()\ncopy config.json template if missing
     Electron->>UI: loadURL(LOADING_HTML)\nShow splash screen immediately
     Electron->>Backend: spawn backend.exe\n--port N --data-dir %APPDATA%/PDF Extractor V3
-    Backend->>Backend: argparse → set_data_dir()\nimport routers, wire SocketIO + FastAPI
+    Backend->>Backend: argparse → set_data_dir()
+    Backend->>Backend: db.init_db()\nCreate tables if not exist (WAL mode)
+    Backend->>Backend: Import routers → wire FastAPI + SocketIO
     Backend->>Backend: uvicorn.run(app, port=N)
     loop Poll every 500ms (max 30s)
         Electron->>Backend: GET /api/health
-        Backend-->>Electron: 200 {"status":"ok"}
+        Backend-->>Electron: 200 {"status":"ok","version":"3.0.0"}
     end
     Electron->>UI: loadFile(renderer/index.html)
-    UI->>Backend: executeJavaScript window.__V3_API_PORT__ = N
-    UI->>UI: React app boots\nRoutes to Home page
+    Electron->>UI: executeJavaScript window.__V3_API_PORT__ = N
+    UI->>UI: React app boots → routes to Home page
     User->>UI: App is ready
 ```
 
 ---
 
-## 2. First-Time Setup Flow
+## 2. First-Time Setup
 
 How a new user configures the application after first launch.
 
 ```mermaid
 flowchart TD
-    A["First launch\nconfig.json created as template"] --> B["User navigates to Settings"]
-    B --> C["GET /api/settings\nreturns masked template config"]
-    C --> D["User fills in PDF password"]
-    D --> E["User fills in Box folder IDs"]
-    E --> F["User uploads box_jwt_config.json\nvia JWT Upload button"]
-    F --> G["POST /api/settings/jwt\nvalidate + save JSON"]
-    G --> H["User clicks Test Box Connection"]
-    H --> I["GET /api/settings/test/box/stream\nSSE: Reading config → Auth → User → Folder"]
-    I --> J{Test passed?}
-    J -- No --> K["Fix Box credentials\nor JWT file"]
-    K --> E
-    J -- Yes --> L["User clicks Sign in to IBM Consulting Advantage"]
-    L --> M["window.electronAPI.icaLogin()\nopen ICA browser window"]
-    M --> N["User signs in with IBMid/SSO"]
-    N --> O["User sends a test message in ICA chat"]
-    O --> P["Electron captures cookie + team_id + chat_id\nauto-closes window"]
-    P --> Q["POST /api/settings\nsave ICA credentials"]
-    Q --> R["User clicks Test ICA Connection"]
-    R --> S["GET /api/settings/test/ica/stream\nSSE: Credentials → POST prompt → Poll reply"]
-    S --> T{Test passed?}
-    T -- No --> U["Reopen ICA login window\ncapture fresh credentials"]
-    T -- Yes --> V["Setup complete\nUser proceeds to Sync"]
+    A["First launch\nDatabase created with empty tables"] --> B["User opens Settings page"]
+    B --> C["GET /api/settings\nReturns masked default template"]
+    C --> D["User enters PDF password"]
+    D --> E["User fills in Box folder IDs\n(Source, Archive, Output)"]
+    E --> F["User pastes Box JWT JSON\ninto the JWT text area"]
+    F --> G["Click Upload JWT"]
+    G --> H["POST /api/settings/jwt\nValidate JSON → db.jwt_config_set()"]
+    H --> I["User clicks Test Box Connection"]
+    I --> J["GET /api/settings/test/box/stream\nSSE: Read config → Auth → User → Folder"]
+    J --> K{Test passed?}
+    K -- No --> L["Fix Box credentials or JWT\nRe-upload JWT if needed"]
+    L --> E
+    K -- Yes --> M["User clicks Sign in to ICA"]
+    M --> N["window.electronAPI.icaLogin()\nOpen Electron browser window"]
+    N --> O["User signs in with IBMid/SSO"]
+    O --> P["User opens a chat and\nSENDS ONE MESSAGE"]
+    P --> Q["Electron captures\ncookie + team_id + chat_id (trusted)"]
+    Q --> R["POST /api/settings\nSave ICA credentials to DB"]
+    R --> S["User clicks Test ICA Connection"]
+    S --> T["GET /api/settings/test/ica/stream\nSSE: Credentials → POST prompt → Poll reply"]
+    T --> U{Test passed?}
+    U -- No --> V["Re-open ICA login\nCapture fresh credentials"]
+    V --> M
+    U -- Yes --> W["Setup complete\nProceed to Sync"]
 ```
 
 ---
 
 ## 3. Full Processing Workflow
 
-The end-to-end journey from new PDFs arriving in Box to extracted outputs ready to view.
+End-to-end from new PDFs on Box to extracted outputs ready to view.
 
 ```mermaid
 flowchart TD
-    A["New PDFs arrive\nin IBM Box source folder"] --> B["User clicks Sync from Box"]
+    A["New PDFs arrive in Box source folder"] --> B["User clicks Sync from Box"]
     B --> C["POST /api/sync/run → background thread"]
-    C --> D["JWTAuth → Box Client\nList folder items"]
+    C --> D["JWT from db.jwt_config_get()\nBox Client authenticated"]
     D --> E["Download each new .pdf\nto Local Folder"]
-    E --> F["Move original to\nBox archive folder"]
-    F --> G["sync:done emitted\nScan triggered automatically"]
-    G --> H["scanner.py walk Local Folder\nRegister new PDFs as Pending"]
-    H --> I["scan:done emitted\nUI shows Pending count"]
+    E --> F["Move original to Box archive folder"]
+    F --> G["Emit sync:done\nAuto-trigger run_scan()"]
+    G --> H["Walk Local Folder\nRegister new PDFs as Pending\nin tracking_files table"]
+    H --> I["Emit scan:done\nUI shows Pending count"]
     I --> J["User clicks Run Extraction"]
     J --> K["POST /api/extract/run → background thread"]
-    K --> L["For each Pending PDF"]
-    L --> M["Decrypt with pdf_password\nopen_and_decrypt_pdf()"]
-    M --> N["Extract text by page\nbuild_structured_json()"]
-    N --> O["Export Word + Excel + JSON\nto dated folder hierarchy"]
-    O --> P["Upload all 3 files to Box\noutput_folder_id"]
+    K --> L["For each Pending PDF\nfrom tracking_files"]
+    L --> M["Decrypt with pdf_password\nfrom config table"]
+    M --> N["extract_text_by_page()\nbuild_structured_json()"]
+    N --> O["Export Word + Excel + JSON\ninto dated folder"]
+    O --> P["Upload 3 files to Box\noutput_folder_id"]
     P --> Q["Archive source PDF locally"]
-    Q --> R["Update tracking_db\nstatus = Completed"]
-    R --> S["Write extraction log\nLog History/"]
-    S --> T["extract:result emitted per file"]
+    Q --> R["Update tracking_files\nstatus = Completed"]
+    R --> S["db.log_add()\nWrite log to extraction_logs table"]
+    S --> T["Emit extract:result"]
     T --> L
-    L -- "all done" --> U["extract:done emitted"]
-    U --> V["User views outputs\non View page or Chat"]
+    L -- "all done" --> U["Emit extract:done\n{completed, failed, total}"]
+    U --> V["User views outputs on View page\nor queries Chat"]
 ```
 
 ---
@@ -111,29 +112,29 @@ sequenceDiagram
     participant UI as React Sync Page
     participant SIO as socket.io-client
     participant Server as Backend SocketIO
-    participant Sync as sync.py worker thread
+    participant Worker as sync.py thread
 
     UI->>Server: POST /api/sync/run
     Server-->>UI: {"status":"started"}
     UI->>SIO: subscribe("sync:log")
     UI->>SIO: subscribe("sync:done")
 
-    Sync->>Server: _emit_log("Connecting to Box…")
+    Worker->>Server: _emit_log("Connecting to Box…")
     Server->>SIO: emit("sync:log", {message})
-    SIO-->>UI: update log panel
+    SIO-->>UI: Append to log panel
 
-    Sync->>Server: _emit_log("Downloading: report.pdf")
-    Server->>SIO: emit("sync:log", {message})
-    SIO-->>UI: append to log
+    Worker->>Server: _emit_log("Downloading: report.pdf")
+    Server->>SIO: emit("sync:log")
+    SIO-->>UI: Append line
 
-    Sync->>Server: _emit_log("✅ Saved: report.pdf")
-    Sync->>Server: _emit_log("📦 Archived on Box")
+    Worker->>Server: _emit_log("✅ Saved: report.pdf")
+    Worker->>Server: _emit_log("📦 Archived on Box: report.pdf")
     Server->>SIO: emit("sync:log" ×2)
-    SIO-->>UI: append lines
+    SIO-->>UI: Append lines
 
-    Sync->>Server: emit("sync:done", {downloaded:1, skipped:0, errors:[]})
+    Worker->>Server: emit("sync:done", {downloaded:1, skipped:0, errors:[]})
     Server->>SIO: emit("sync:done")
-    SIO-->>UI: show summary toast
+    SIO-->>UI: Show completion summary toast
 ```
 
 ---
@@ -147,7 +148,7 @@ sequenceDiagram
     participant UI as React Extract Page
     participant SIO as socket.io-client
     participant Server as Backend SocketIO
-    participant Ext as extractor.py thread
+    participant Worker as extractor.py thread
 
     UI->>Server: POST /api/extract/run
     Server-->>UI: {"status":"started"}
@@ -156,25 +157,60 @@ sequenceDiagram
     UI->>SIO: subscribe("extract:done")
 
     loop For each pending file
-        Ext->>Server: emit("extract:progress", {current, total, percent, name})
-        Server->>SIO: emit("extract:progress")
-        SIO-->>UI: update progress bar
+        Worker->>Server: emit("extract:progress", {current, total, percent, name})
+        Server->>SIO: forward event
+        SIO-->>UI: Update progress bar
 
-        Ext->>Server: emit("extract:result", {status:"ok", fname, ref, word, excel, json, upload})
-        Server->>SIO: emit("extract:result")
-        SIO-->>UI: append to results table
+        Worker->>Worker: Decrypt → Parse → Export → Upload → Archive
+        Worker->>Worker: db.log_add() — write log to DB
+
+        Worker->>Server: emit("extract:result", {status:"ok", fname, ref, word, excel, json, upload})
+        Server->>SIO: forward event
+        SIO-->>UI: Append row to results table
     end
 
-    Ext->>Server: emit("extract:done", {completed, failed, total})
-    Server->>SIO: emit("extract:done")
-    SIO-->>UI: show completion toast
+    Worker->>Server: emit("extract:done", {completed, failed, total})
+    Server->>SIO: forward event
+    SIO-->>UI: Show completion toast
 ```
 
 ---
 
-## 6. Chat: Report Lookup Flow
+## 6. Settings SSE Connection Test
 
-How a "look up John Smith" message is processed end-to-end.
+How the streaming "Test Box" or "Test ICA" button shows live step-by-step progress.
+
+```mermaid
+sequenceDiagram
+    participant UI as Settings Page
+    participant ES as EventSource
+    participant API as GET /api/settings/test/box/stream
+    participant Gen as test_box_stream() generator
+
+    UI->>ES: new EventSource("/api/settings/test/box/stream")
+    ES->>API: HTTP GET (keep-alive)
+    API->>Gen: iterate generator
+
+    Gen-->>API: yield {step:"Reading configuration…", state:"run"}
+    API-->>ES: data: {step, state:"run"}\n\n
+    ES-->>UI: Show spinner row
+
+    Gen-->>API: yield {step:"Authenticating with Box…", state:"run"}
+    ES-->>UI: Show next spinner row
+
+    Gen-->>API: yield {step:"Authenticated ✓", state:"ok"}
+    ES-->>UI: Green checkmark
+
+    Gen-->>API: yield {step:"Box connection is working.", state:"done", detail:"..."}
+    ES-->>UI: Show success summary
+    UI->>ES: close()
+```
+
+---
+
+## 7. Chat Report Lookup
+
+How a "look up John Smith" message is processed.
 
 ```mermaid
 sequenceDiagram
@@ -186,9 +222,9 @@ sequenceDiagram
     participant FS as JSON File Extracts/
 
     User->>UI: "look up John Smith"
-    UI->>API: POST {message: "look up John Smith", history: [...]}
+    UI->>API: POST {message, history:[...]}
     API->>Router: route_chat_message()
-    Router->>Router: _sanitize_history()\nremove hallucinated turns
+    Router->>Router: _sanitize_history()\nremove any hallucinated turns
     Router->>Router: Match LOOKUP_PATTERNS regex
     Router->>Skill: skill_lookup_report("john smith")
     Skill->>FS: rglob("*.json") over JSON File Extracts/
@@ -196,48 +232,15 @@ sequenceDiagram
         Skill->>Skill: _name_matches("john smith", subject_name)
         Skill->>Skill: Keep newest match per case_reference
     end
-    Skill-->>Router: Formatted report block (text)
+    Skill-->>Router: Formatted report block (plain text)
     Router-->>API: reply string
-    API-->>UI: {"reply": "Subject: John Smith | Ref: BC-2024-001 ..."}
-    UI-->>User: Display in chat bubble
+    API-->>UI: {"reply": "Subject: John Smith | Ref: RN-001 ..."}
+    UI-->>User: Display in assistant chat bubble
 ```
 
 ---
 
-## 7. Settings SSE Connection Test Flow
-
-How the "Test Box" button shows live step-by-step progress.
-
-```mermaid
-sequenceDiagram
-    participant UI as Settings Page
-    participant ES as EventSource (browser)
-    participant API as GET /api/settings/test/box/stream
-    participant Gen as test_box_stream()
-
-    UI->>ES: new EventSource("/api/settings/test/box/stream")
-    ES->>API: HTTP GET (SSE)
-    API->>Gen: iterate generator
-
-    Gen-->>API: yield {step:"Reading configuration…", state:"run"}
-    API-->>ES: data: {"step":"Reading configuration…","state":"run"}\n\n
-    ES-->>UI: show step row with spinner
-
-    Gen-->>API: yield {step:"Authenticating with Box…", state:"run"}
-    API-->>ES: SSE event
-    ES-->>UI: show next step
-
-    Gen-->>API: yield {step:"Authenticated ✓", state:"ok"}
-    ES-->>UI: green checkmark
-
-    Gen-->>API: yield {step:"Box connection is working.", state:"done", detail:"..."}
-    ES-->>UI: show success summary
-    UI->>ES: close()
-```
-
----
-
-## 8. ICA Browser Login Flow
+## 8. ICA Browser Login
 
 Credential capture via the embedded Electron browser window.
 
@@ -250,36 +253,34 @@ sequenceDiagram
     participant WR as webRequest hook
     participant ICA as IBM Consulting Advantage
 
-    User->>Settings: Click "Sign in to IBM Consulting Advantage"
+    User->>Settings: Click "Sign in to ICA"
     Settings->>IPC: window.electronAPI.icaLogin()
     IPC->>Win: new BrowserWindow(partition: persist:ica-login)
     Win->>ICA: loadURL(https://ibm.com/curatorai/…)
-    ICA-->>Win: Login page
+    ICA-->>Win: Login page rendered
     User->>Win: Sign in with IBMid / w3id SSO
-    ICA-->>Win: Authenticated UI
-
-    User->>Win: Type and send a message in ICA chat
+    User->>Win: Open a chat thread and send a message
     Win->>ICA: POST /chats/{chat_id}/entries
-    WR->>WR: onSendHeaders captures:\ncookie + teamid + teamname + chat_id (trusted)
-    WR->>IPC: maybeComplete() → finish({status:'ok', captured})
-    IPC->>Win: win.close()
+    WR->>WR: onSendHeaders captures:\ncookie + teamid + teamname\nchat_id (trusted — from /entries POST)
+    WR->>IPC: chatIdIsTrusted = true\nmaybeComplete() → finish({status:'ok', captured})
+    IPC->>Win: win.close() (50ms delay)
     IPC-->>Settings: {status:'ok', captured:{full_cookie, team_id, chat_id, …}}
-    Settings->>Settings: POST /api/settings (save credentials)
-    Settings-->>User: "ICA credentials saved ✓"
+    Settings->>Settings: POST /api/settings\n(save captured credentials to DB)
+    Settings-->>User: "ICA credentials captured & saved ✓"
 ```
 
 ---
 
-## 9. Application Shutdown Flow
+## 9. Application Shutdown
 
 Clean teardown when the user closes the window.
 
 ```mermaid
 flowchart TD
     A["User closes Electron window"] --> B["app: window-all-closed"]
-    B --> C["app.quit() on non-macOS"]
-    C --> D["app: will-quit"]
+    B --> C["app.quit() called (non-macOS)"]
+    C --> D["app: will-quit event"]
     D --> E["pythonProcess.kill()\nTerminate backend.exe"]
-    E --> F["Delete .v3_port file\nfrom userData"]
-    F --> G["Electron process exits"]
+    E --> F["Delete .v3_port file\nfrom userData directory"]
+    F --> G["Electron process exits cleanly"]
 ```

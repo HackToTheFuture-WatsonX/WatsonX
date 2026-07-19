@@ -120,10 +120,13 @@ docs/
 - [V2 Improvements](pdf-extractor-v2/improvements.md)
 
 ### PDF Extractor V3
-- [V3 Overview & Quick Start](pdf-extractor-v3/README.md)
+- [V3 Overview](pdf-extractor-v3/README.md)
+- [V3 User Guide](pdf-extractor-v3/user-guide.md) ← **Start here for end-user instructions**
 - [V3 Features](pdf-extractor-v3/features.md)
 - [V3 System Design](pdf-extractor-v3/system-design.md)
+- [V3 Data Flow](pdf-extractor-v3/data-flow.md)
 - [V3 Process Flows](pdf-extractor-v3/process-flows.md)
+- [V3 Specifications](pdf-extractor-v3/specifications.md)
 - [V3 Improvements](pdf-extractor-v3/improvements.md)
 
 ### WatsonX Challenge - Web

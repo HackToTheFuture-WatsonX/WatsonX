@@ -2,35 +2,36 @@
 
 ## Architecture Overview
 
-V3 is a three-layer desktop application packaged into a single distributable executable:
+V3 is a three-layer desktop application packaged into a single distributable executable. The three layers communicate exclusively through well-defined interfaces: REST + WebSocket between frontend and backend; IPC between Electron and the renderer; and a single SQLite database as the backend's sole persistence layer.
 
 ```mermaid
 graph TD
-    subgraph "Electron Shell"
-        ElMain["main.js\nPort finder · backend spawner\nHealth poll · Window lifecycle\nICA browser login"]
-        Preload["preload.js\ncontextBridge → window.electronAPI"]
+    subgraph "Electron Shell (main.js)"
+        ElMain["main.js\nPort finder · backend spawner\nHealth poll · Window lifecycle\nICA browser login · IPC handlers"]
+        Preload["preload.js\ncontextBridge\nwindow.electronAPI"]
     end
 
-    subgraph "React Frontend (Chromium)"
-        Router["App.tsx\nReact Router + Sidebar"]
-        Pages["Pages\nHome · Sync · Scan\nExtract · View · Insights\nChat · Settings"]
+    subgraph "React Frontend (Chromium renderer)"
+        Router["App.tsx\nReact Router · Sidebar · Theme"]
+        Pages["Pages\nHome · Sync · Scan · Extract\nView · Insights · Chat · Settings"]
         Hooks["Hooks\nuseApi · useSocket"]
         Store["Zustand Stores\ntheme · chat · toast"]
     end
 
     subgraph "FastAPI Backend (backend.exe)"
-        Main["main.py\nFastAPI + SocketIO entry"]
+        Main["main.py\nFastAPI + SocketIO entry\ndb.init_db() on startup"]
+        DBLayer["db.py\nSQLite — single source of truth\nconfig · tracking · jwt · logs"]
         Scanner["scanner.py\n/api/scan/*"]
         Sync2["sync.py\n/api/sync/*"]
         Extractor["extractor.py\n/api/extract/*"]
         Viewer["viewer.py\n/api/view/*"]
-        Insights["insights.py\n/api/insights"]
+        Insights["insights.py\n/api/insights/*"]
         Chat["chat.py\n/api/chat/send"]
         Settings["settings.py\n/api/settings/*"]
-        Config["config.py\nPath helpers"]
-        Tracking["tracking.py\ntracking_db.json"]
+        Config["config.py\nPath + config wrappers → db.py"]
+        Tracking["tracking.py\nload/save wrappers → db.py"]
         PTE["pdf_text_extractor.py\nDecrypt · Parse · Export"]
-        BoxClient["box_client.py\nJWT · Download · Upload"]
+        BoxClient["box_client.py\nJWT from DB · Download · Upload"]
         Ports["ports.py\nfind_free_port()"]
         Events["events.py\nSocketIO event constants"]
     end
@@ -40,19 +41,20 @@ graph TD
         ICA["🤖 IBM Consulting Advantage\nCuratorAI HTTP API"]
     end
 
-    subgraph "File System (%APPDATA%)"
-        FS["config.json\ntracking_db.json\nLocal Folder/\nLog History/"]
+    subgraph "File System"
+        DB[("🗄️ pdf_extractor_v3.db\nSQLite")]
+        Exports["📁 Local Folder\nExtracted exports"]
     end
 
     ElMain --> Preload
-    ElMain -->|"spawn backend.exe --port N --data-dir"| Main
+    ElMain -->|"spawn backend.exe\n--port N --data-dir"| Main
     ElMain -->|"loadFile renderer/index.html"| Router
     Preload -->|"window.electronAPI"| Pages
     Router --> Pages
-    Pages -->|"fetch /api/*"| Hooks
-    Pages -->|"socket.io-client"| Hooks
-    Hooks -->|"REST"| Main
+    Pages --> Hooks
+    Hooks -->|"REST /api/*"| Main
     Hooks -->|"WebSocket"| Main
+    Main --> DBLayer
     Main --> Scanner
     Main --> Sync2
     Main --> Extractor
@@ -60,6 +62,7 @@ graph TD
     Main --> Insights
     Main --> Chat
     Main --> Settings
+    DBLayer --> DB
     Scanner --> Tracking
     Sync2 --> BoxClient
     Extractor --> PTE
@@ -67,10 +70,11 @@ graph TD
     Extractor --> Tracking
     Chat --> PTE
     Settings --> Config
-    Config --> FS
-    Tracking --> FS
+    Config --> DBLayer
+    Tracking --> DBLayer
     BoxClient --> Box
     Chat --> ICA
+    PTE --> Exports
 ```
 
 ---
@@ -79,24 +83,25 @@ graph TD
 
 | Layer | Technology | Version | Role |
 |---|---|---|---|
-| Desktop shell | Electron | 32 | Window management, backend lifecycle, IPC |
+| Desktop shell | Electron | 32 | Window management, backend process lifecycle, IPC |
 | Packaging | electron-builder | latest | NSIS installer + portable `.exe` |
 | Frontend framework | React | 18 | Component-based UI |
 | Frontend language | TypeScript | 5 | Type-safe components and API contracts |
 | Frontend build | Vite | 5 | Fast dev server + optimised production build |
 | Frontend styling | Tailwind CSS | 3 | Utility-first CSS with custom design tokens |
 | State management | Zustand | 4 | Lightweight stores (theme, chat, toast) |
-| WebSocket client | socket.io-client | 4 | Real-time event subscription |
+| WebSocket client | socket.io-client | 4 | Real-time event subscriptions |
 | Backend language | Python | 3.12 | All backend logic |
 | Backend framework | FastAPI | 0.110+ | REST API with automatic `/docs` OpenAPI UI |
 | ASGI server | Uvicorn | 0.29+ | HTTP server for FastAPI |
 | WebSocket server | python-socketio | 5 | SocketIO in threading mode |
+| Database | SQLite (stdlib `sqlite3`) | — | Single source of truth; WAL mode |
 | PDF parsing | PyMuPDF (fitz) | 1.24+ | Page text extraction from PDFs |
 | Word export | python-docx | 1.1+ | `.docx` generation |
 | Excel export | openpyxl | 3.1+ | `.xlsx` generation |
 | Box SDK | boxsdk (v3) | 3.9.2 | JWT-authenticated Box API client |
 | Data validation | Pydantic | 2 | Request/response models |
-| Bundler | PyInstaller | latest | Python → `backend.exe` |
+| Python bundler | PyInstaller | latest | Python → `backend.exe` |
 
 ---
 
@@ -106,124 +111,166 @@ graph TD
 
 | File | Responsibility |
 |---|---|
-| `electron/main.js` | App lifecycle: finds free port, spawns `backend.exe`, polls `/api/health`, creates `BrowserWindow`, injects `window.__V3_API_PORT__`, hosts ICA browser login, cleans up on quit |
-| `electron/preload.js` | Exposes `window.electronAPI.getApiPort()` and `window.electronAPI.icaLogin()` to the renderer via `contextBridge` |
-| `electron/package.json` | electron-builder config: NSIS installer + portable target, `extraResources` to bundle `backend.exe` |
+| `electron/main.js` | App lifecycle: finds free port, spawns `backend.exe --port N --data-dir ...`, polls `/api/health`, creates `BrowserWindow` with splash, loads React renderer, injects `window.__V3_API_PORT__`, hosts ICA browser login credential capture, kills backend on quit |
+| `electron/preload.js` | Exposes `window.electronAPI.getApiPort()` and `window.electronAPI.icaLogin()` to the renderer via `contextBridge` (no Node integration) |
+| `electron/package.json` | electron-builder config: NSIS installer + portable target, `extraResources` to bundle `backend.exe` folder |
 
 ### Frontend Layer
 
-| File / Directory | Responsibility |
+| File | Responsibility |
 |---|---|
-| `frontend/src/App.tsx` | React Router setup, sidebar layout, theme class application |
-| `frontend/src/pages/Home.tsx` | Dashboard: quick-action cards linking to each page |
-| `frontend/src/pages/Sync.tsx` | Box→Local sync trigger + live SocketIO log stream |
+| `frontend/src/App.tsx` | React Router setup, always-dark sidebar layout, theme class toggle |
+| `frontend/src/pages/Home.tsx` | Dashboard with quick-access cards to all pages |
+| `frontend/src/pages/Sync.tsx` | Box→Local sync trigger + live SocketIO log stream panel |
 | `frontend/src/pages/Scan.tsx` | Folder scan trigger + pending/completed file table |
-| `frontend/src/pages/Extract.tsx` | Extraction trigger + per-file progress + results table |
-| `frontend/src/pages/View.tsx` | Browse extracted files (Word/Excel/JSON) grouped by reference |
-| `frontend/src/pages/Insights.tsx` | Stats cards + chart (bar) over selectable period |
-| `frontend/src/pages/Chat.tsx` | Conversational chat with Detective Conan AI assistant |
-| `frontend/src/pages/Settings.tsx` | GUI for all config.json fields, JWT upload, Box/ICA live connection tests, ICA browser login |
-| `frontend/src/hooks/useApi.ts` | Thin wrapper around `fetch` pointing to the dynamic backend port |
+| `frontend/src/pages/Extract.tsx` | Extraction trigger + per-file progress bar + results table |
+| `frontend/src/pages/View.tsx` | Browse extracted files (Word/Excel/JSON) grouped by reference; open in OS default app |
+| `frontend/src/pages/Insights.tsx` | Stat cards (total/completed/pending) + bar chart; selectable period |
+| `frontend/src/pages/Chat.tsx` | Conversational chat with Detective Conan; bubble UI; history preserved in Zustand |
+| `frontend/src/pages/Settings.tsx` | GUI for all config fields; Box JWT upload; per-section Clear buttons; Box/ICA SSE streaming connection tests; ICA browser login button |
+| `frontend/src/hooks/useApi.ts` | `fetch` wrapper pointing to `http://127.0.0.1:<port>` |
 | `frontend/src/hooks/useSocket.ts` | `socket.io-client` connection + typed event subscriptions |
-| `frontend/src/store/theme.ts` | Zustand dark/light toggle, persisted to `localStorage` |
-| `frontend/src/store/chat.ts` | Zustand chat message history |
+| `frontend/src/store/theme.ts` | Zustand dark/light toggle persisted to `localStorage` |
+| `frontend/src/store/chat.ts` | Zustand chat message history + ICA configured flag |
 | `frontend/src/store/toast.ts` | Zustand toast notification queue |
-| `frontend/src/components/Sidebar.tsx` | Always-dark navy sidebar with navigation links |
+| `frontend/src/components/Sidebar.tsx` | Always-dark navy sidebar with route links and status indicators |
 | `frontend/src/components/ChatBubble.tsx` | Individual chat message bubble (user / assistant) |
 | `frontend/src/components/ui/` | Reusable primitives: Button, Card, Badge, Spinner, EmptyState, Toast |
-| `frontend/src/types/index.ts` | All shared TypeScript interfaces |
+| `frontend/src/types/index.ts` | All shared TypeScript interfaces (`AppConfig`, `TrackedFile`, `ExtractResult`, etc.) |
 
 ### Backend Layer
 
 | Module | REST Routes | Responsibility |
 |---|---|---|
-| `main.py` | `GET /api/health` | Entry point; wires FastAPI router + SocketIO; reads `--port` and `--data-dir` CLI args |
-| `config.py` | — | Config file location (`set_data_dir`), `read_config()`, `write_config()`, path helpers for local folder, extracted folder, archive folder |
-| `tracking.py` | — | `load_tracking()` / `save_tracking()` — reads and writes `tracking_db.json` |
-| `ports.py` | — | `find_free_port(8765)` — socket-probes ports, skips 5000 / 8080 / 47321 |
-| `events.py` | — | String constants for SocketIO event names (e.g. `sync:log`, `extract:progress`) |
-| `scanner.py` | `POST /api/scan/run` `GET /api/scan/files` | Walks `Local Folder`, registers PDFs in tracking DB, purges stale entries, emits `scan:progress` / `scan:done` |
-| `sync.py` | `POST /api/sync/run` `GET /api/sync/status` | Downloads PDFs from Box folder, moves originals to Box archive folder, emits `sync:log` / `sync:done` |
-| `extractor.py` | `POST /api/extract/run` `GET /api/extract/results` | Full extraction pipeline: decrypt → parse → export Word/Excel/JSON → upload to Box → archive locally → write log; emits `extract:progress` / `extract:result` / `extract:done` |
-| `viewer.py` | `GET /api/view/files` `POST /api/view/open` | Lists extracted files grouped by type and reference; opens files in OS default application |
-| `insights.py` | `GET /api/insights` `GET /api/insights/logs` | Returns stat cards + time-bucketed chart data from tracking DB; reads log history files |
-| `chat.py` | `POST /api/chat/send` | Intent router: dispatches to local skill handlers or ICA HTTP API; hallucination detection; streaming connection tests |
-| `settings.py` | `GET /api/settings` `POST /api/settings` `GET /api/settings/status` `POST /api/settings/jwt` `POST /api/settings/test/box` `GET /api/settings/test/box/stream` `POST /api/settings/test/ica` `GET /api/settings/test/ica/stream` | CRUD for `config.json`; deep-merge with secret masking; Box/ICA connection tests via SSE stream |
-| `box_client.py` | — | `get_box_client()` → Box `JWTAuth` + `Client`; `upload_file_to_box()` with folder mirroring |
-| `pdf_text_extractor.py` | — | Shared extraction engine (ported from V2): `open_and_decrypt_pdf`, `extract_text_by_page`, `build_structured_json`, `export_to_word`, `export_to_csv`, `export_to_json` |
+| `main.py` | `GET /api/health` | Entry point; parses `--port` and `--data-dir` args; calls `db.init_db()`; wires FastAPI routers + SocketIO server |
+| `db.py` | — | **SQLite persistence layer.** Four tables: `config`, `tracking_files`, `jwt_config`, `extraction_logs`. WAL mode, per-call connections. All other modules go through `config.py` or `tracking.py` wrappers |
+| `config.py` | — | Path helpers (`set_data_dir`, `_data_dir`, `local_folder`, `extracted_folder`, `archive_folder`). Thin wrappers over `db.py` for `read_config`, `write_config`, `write_jwt_config`, `jwt_config_exists` |
+| `tracking.py` | — | `load_tracking()` → `db.tracking_get_all()` ; `save_tracking()` → `db.tracking_replace_all()` — legacy shape `{"files": {...}}` preserved |
+| `ports.py` | — | `find_free_port(8765)` — socket-probes ports starting at 8765, skips 5000 / 8080 / 47321 |
+| `events.py` | — | String constants for all SocketIO event names |
+| `scanner.py` | `POST /api/scan/run` `GET /api/scan/files` | Walks `Local Folder/**/*.pdf`, skips `Extracted/` + `Archive/`, upserts tracking DB, purges stale entries, emits `scan:progress` / `scan:done` |
+| `sync.py` | `POST /api/sync/run` `GET /api/sync/status` | Downloads PDFs from Box source folder, archives originals on Box, triggers scan after completion, emits `sync:log` / `sync:done` |
+| `extractor.py` | `POST /api/extract/run` `GET /api/extract/results` | Full extraction pipeline: decrypt → parse → export Word/Excel/JSON → upload to Box → archive locally → write log to DB; emits `extract:progress` / `extract:result` / `extract:done` |
+| `viewer.py` | `GET /api/view/files` `POST /api/view/open` | Lists extracted files grouped by type and case reference; opens files via `os.startfile()` |
+| `insights.py` | `GET /api/insights` `GET /api/insights/logs` | Returns stat cards + time-bucketed chart data from `tracking_files` table; reads log history from `extraction_logs` table via `db.logs_since()` |
+| `chat.py` | `POST /api/chat/send` | Keyword intent router → local skill handlers → ICA HTTP fallback; hallucination detection; SSE streaming connection test generators |
+| `settings.py` | `GET/POST /api/settings` `GET /api/settings/status` `POST /api/settings/jwt` `POST /api/settings/test/box` `GET /api/settings/test/box/stream` `POST /api/settings/test/ica` `GET /api/settings/test/ica/stream` | CRUD for config via `db.py`; deep-merge with secret masking; Box/ICA connection tests via SSE |
+| `box_client.py` | — | `get_box_client()` → loads JWT from `db.jwt_config_get()` (falls back to on-disk file for legacy installs); `upload_file_to_box()` with folder hierarchy mirroring |
+| `pdf_text_extractor.py` | — | Shared extraction engine: `open_and_decrypt_pdf`, `extract_text_by_page`, `build_structured_json`, `export_to_word`, `export_to_csv`, `export_to_json` |
 
 ---
 
-## REST API Summary
+## SQLite Database Schema
 
-Base URL: `http://127.0.0.1:<port>` (port auto-detected at startup)
+The database file is `pdf_extractor_v3.db`, located in `%APPDATA%\PDF Extractor V3\` in production (or `backend/` in development). All tables are created by `db.init_db()` on first startup.
+
+```sql
+-- Application configuration (one row per top-level config section)
+CREATE TABLE IF NOT EXISTS config (
+    section TEXT PRIMARY KEY,   -- e.g. "box", "ica", "local", "sync", "settings"
+    value   TEXT NOT NULL       -- JSON-encoded value for that section
+);
+
+-- Tracked PDF files
+CREATE TABLE IF NOT EXISTS tracking_files (
+    rel_key        TEXT PRIMARY KEY,  -- relative path from Local Folder root
+    name           TEXT,              -- filename e.g. "RN-123.pdf"
+    status         TEXT DEFAULT 'Pending',  -- "Pending" | "Completed"
+    last_extracted TEXT,              -- ISO-8601 timestamp
+    ref_number     TEXT,              -- case reference e.g. "RN-123456_789_10"
+    local_path     TEXT,              -- absolute path on disk
+    archive_path   TEXT               -- path after archiving
+);
+
+-- Box JWT service-account config (single row, id always = 1)
+CREATE TABLE IF NOT EXISTS jwt_config (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    value TEXT NOT NULL   -- full JWT config JSON
+);
+
+-- Per-extraction log entries (replaces Log History/ filesystem files)
+CREATE TABLE IF NOT EXISTS extraction_logs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ref_number  TEXT,
+    occurred_at TEXT NOT NULL,   -- ISO-8601 timestamp
+    content     TEXT NOT NULL    -- full log text for this extraction
+);
+CREATE INDEX IF NOT EXISTS idx_logs_occurred_at ON extraction_logs (occurred_at);
+```
+
+**WAL mode** is enabled so background worker threads (scanner, sync, extractor) can write concurrently while the FastAPI request threads read without blocking.
+
+---
+
+## REST API Reference
+
+Base URL: `http://127.0.0.1:<port>` (port auto-detected at startup, injected as `window.__V3_API_PORT__`)
 
 Interactive docs: `http://127.0.0.1:<port>/docs`
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/health` | Version check / liveness probe |
-| `POST` | `/api/scan/run` | Trigger background folder scan |
-| `GET` | `/api/scan/files` | List all tracked files with status |
-| `POST` | `/api/sync/run` | Trigger Box→Local sync in background |
-| `GET` | `/api/sync/status` | Check if sync is running |
+| `GET` | `/api/health` | Liveness probe; returns `{"status":"ok","version":"3.0.0"}` |
+| `POST` | `/api/scan/run` | Trigger folder scan in background; progress via SocketIO |
+| `GET` | `/api/scan/files` | Return all tracked files with status |
+| `POST` | `/api/sync/run` | Trigger Box→Local sync in background; logs via SocketIO |
+| `GET` | `/api/sync/status` | `{"running": bool}` |
 | `POST` | `/api/extract/run` | Trigger extraction pipeline in background |
-| `GET` | `/api/extract/results` | Same as `/api/scan/files` (full tracking DB) |
-| `GET` | `/api/view/files` | List extracted outputs grouped by type + reference |
-| `POST` | `/api/view/open` | Open a file in the OS default application |
+| `GET` | `/api/extract/results` | Same as `/api/scan/files` |
+| `GET` | `/api/view/files` | Extracted outputs grouped by type + reference |
+| `POST` | `/api/view/open` | Open a file in the OS default app |
 | `GET` | `/api/insights` | Stats + chart data (`?period=day\|week\|month\|year`) |
-| `GET` | `/api/insights/logs` | Plain-text log history for a period |
-| `POST` | `/api/chat/send` | Send a chat message; returns reply |
-| `GET` | `/api/settings` | Read config.json (secrets masked) |
-| `POST` | `/api/settings` | Write config.json (deep-merge, mask-aware) |
-| `GET` | `/api/settings/status` | Whether Box / ICA / PDF password are configured |
-| `POST` | `/api/settings/jwt` | Upload Box JWT config JSON content |
-| `POST` | `/api/settings/test/box` | Test Box JWT connection (returns user + folder) |
-| `GET` | `/api/settings/test/box/stream` | Box test as SSE stream (live steps) |
-| `POST` | `/api/settings/test/ica` | Test ICA cookie connection (returns reply preview) |
-| `GET` | `/api/settings/test/ica/stream` | ICA test as SSE stream (live steps) |
+| `GET` | `/api/insights/logs` | Log history text (`?period=week`) |
+| `POST` | `/api/chat/send` | Send message; returns `{"reply": "..."}` |
+| `GET` | `/api/settings` | Read config (secrets masked as `••••••••`) |
+| `POST` | `/api/settings` | Write config (deep-merge; mask values skipped) |
+| `GET` | `/api/settings/status` | Box / ICA / PDF password configured flags |
+| `POST` | `/api/settings/jwt` | Upload Box JWT JSON content (stored in DB) |
+| `POST` | `/api/settings/test/box` | Test Box JWT connection (synchronous) |
+| `GET` | `/api/settings/test/box/stream` | Box connection test as SSE stream |
+| `POST` | `/api/settings/test/ica` | Test ICA connection (synchronous) |
+| `GET` | `/api/settings/test/ica/stream` | ICA connection test as SSE stream (up to 5 min) |
 
 ---
 
 ## SocketIO Events
 
-All events are emitted by the backend to all connected clients (no rooms).
-
 | Event | Direction | Payload | Emitter |
 |---|---|---|---|
-| `sync:log` | Server → Client | `{ message: string }` | `sync.py` |
-| `sync:done` | Server → Client | `{ downloaded, skipped, errors[] }` | `sync.py` |
-| `scan:progress` | Server → Client | `{ found, name }` | `scanner.py` |
-| `scan:done` | Server → Client | `{ found, total, pending, completed }` | `scanner.py` |
-| `extract:progress` | Server → Client | `{ current, total, percent, name }` | `extractor.py` |
-| `extract:result` | Server → Client | `{ status, fname, ref, word, excel, json, upload }` | `extractor.py` |
-| `extract:done` | Server → Client | `{ completed, failed, total }` | `extractor.py` |
+| `sync:log` | Server → Client | `{ message: string }` | `sync.py` per file |
+| `sync:done` | Server → Client | `{ downloaded, skipped, errors[] }` | `sync.py` on completion |
+| `scan:progress` | Server → Client | `{ found, name }` | `scanner.py` per file |
+| `scan:done` | Server → Client | `{ found, total, pending, completed }` | `scanner.py` on completion |
+| `extract:progress` | Server → Client | `{ current, total, percent, name }` | `extractor.py` per file |
+| `extract:result` | Server → Client | `{ status, fname, ref, word, excel, json, upload }` | `extractor.py` per file |
+| `extract:done` | Server → Client | `{ completed, failed, total }` | `extractor.py` on completion |
 
 ---
 
 ## Key Design Decisions
 
-| Decision | Choice | Why |
+| Decision | Choice | Rationale |
 |---|---|---|
-| Desktop shell | Electron + electron-builder | Produces real `.exe`, bundles Chromium — no browser required on target machine |
-| Python bundling | PyInstaller one-folder build → `backend.exe` | All Python packages and interpreter bundled — no system Python needed |
-| Portable distribution | electron-builder portable target | Single `.exe` deployable from USB / shared folder — no install needed |
-| Backend API style | FastAPI REST + python-socketio | REST for synchronous queries; SocketIO for long-running live-streaming operations |
-| Real-time events | SocketIO threading mode | Async updates don't block FastAPI request threads; `threading.Thread` workers emit freely |
-| Port resolution | `find_free_port(8765)` via `socket.bind()` | Zero-config: always finds a free port, never conflicts with other workspace servers |
-| User data path | `%APPDATA%\PDF Extractor V3\` via `--data-dir` | Config/DB/logs in writable location, not inside read-only app bundle |
-| Box SDK version | `boxsdk==3.9.2` (v3, NOT v10 `box_sdk_gen`) | V3 reuses the same `JWTAuth`/`Client` API as V2, avoiding a migration |
-| Secret masking | Server-side mask on `GET /api/settings` | `pdf_password` and `full_cookie` never travel to the frontend in cleartext |
-| ICA credential capture | Electron `webRequest.onSendHeaders` | Auto-captures cookie + team_id + chat_id from real ICA traffic — no manual copy-paste |
-| Chat intent routing | Keyword dispatch → local skills → ICA fallback | Predictable for known commands; ICA handles open-ended questions |
-| Hallucination guard | Regex pattern list on ICA replies | Detects fabricated report data before it reaches the user |
-| Theme persistence | Zustand + localStorage | Dark/light choice survives app restarts without any backend involvement |
+| Desktop shell | Electron + electron-builder | Produces real `.exe`, bundles Chromium — no browser required on target |
+| Python bundling | PyInstaller one-folder → `backend.exe` | Python interpreter + all packages bundled — no system Python needed |
+| Persistence | SQLite (`db.py`) | Single atomic file replaces three loose JSON files; WAL mode supports concurrent threads; no external dependency |
+| Config storage | `config` table (one row per section) | Sections updated independently; no full-file rewrites; mask-safe deep-merge |
+| JWT config storage | `jwt_config` table | Keeps sensitive key material inside the database file, not a separate file on disk |
+| Extraction logs | `extraction_logs` table | DB queries replace filesystem `rglob`; indexed on `occurred_at` for period filtering |
+| Backend API | FastAPI REST + python-socketio threading mode | REST for synchronous queries; SocketIO for long-running live-streaming operations |
+| Port resolution | `find_free_port(8765)` via `socket.bind()` | Zero-config; never conflicts with other workspace servers |
+| User data path | `%APPDATA%\PDF Extractor V3\` via `--data-dir` | Writable location, separate from read-only app bundle |
+| Box SDK version | `boxsdk==3.9.2` (v3, NOT v10 `box_sdk_gen`) | Same `JWTAuth`/`Client` API as V2; no migration required |
+| Secret masking | Server-side `••••••••` on `GET /api/settings` | `pdf_password` and `full_cookie` never travel to the frontend in cleartext |
+| ICA credential capture | Electron `webRequest.onSendHeaders` | Auto-captures cookie + team_id + chat_id from real ICA API traffic |
+| Trusted chat_id guard | Only `/chats/{id}/entries` POST IDs accepted | Prevents uninitialized thread IDs from causing "(ICA did not respond in time)" |
+| Hallucination guard | Regex pattern list on all ICA replies | Detects fabricated report data before it reaches the user |
 
 ---
 
-## File Hierarchy (Extracted Outputs)
+## Output File Hierarchy
 
-Extraction outputs are organised in a date-based hierarchy under `Local Folder/Extracted/`:
+Extraction outputs use a date-based nested structure under `Local Folder/Extracted/`:
 
 ```
 Extracted/
@@ -232,9 +279,7 @@ Extracted/
 │       └── <Mon_YYYY>_Extracts/
 │           └── Week_<NN>/
 │               └── <YYYY-MM-DD>/
-│                   └── <RefNumber>.docx
-├── CSV Extracts/          ← same structure, .xlsx files
-└── JSON File Extracts/    ← same structure, .json files
+│                   └── <ref_number>.docx
+├── CSV Extracts/       ← same structure, .xlsx files
+└── JSON File Extracts/ ← same structure, .json files
 ```
-
-Extraction logs follow a parallel structure under `Log History/`.
