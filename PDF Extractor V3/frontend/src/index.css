@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { font-family: Inter, 'Segoe UI', system-ui, sans-serif; }
+  body { @apply bg-bg-light text-gray-900; }
+  html.dark body { @apply bg-bg-dark text-gray-100; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-400 dark:bg-gray-600 rounded-full; }
+}
+
+@layer components {
+  .card {
+    @apply bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark rounded-xl;
+  }
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-dark text-white font-semibold px-4 py-2 rounded-lg
+           transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply bg-transparent hover:bg-gray-100 dark:hover:bg-white/10 text-gray-600 dark:text-gray-400
+           font-medium px-3 py-2 rounded-lg transition-colors duration-150;
+  }
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+  }
+  .badge-green  { @apply badge bg-green/15 text-green; }
+  .badge-amber  { @apply badge bg-pending/15 text-pending; }
+  .badge-accent { @apply badge bg-accent/15 text-accent; }
+  .section-label {
+    @apply text-xs font-bold tracking-widest text-gray-400 uppercase mb-3;
+  }
+  .page-title {
+    @apply text-xl font-bold text-gray-900 dark:text-white;
+  }
+  .page-sub {
+    @apply text-sm text-gray-500 dark:text-gray-400;
+  }
+}

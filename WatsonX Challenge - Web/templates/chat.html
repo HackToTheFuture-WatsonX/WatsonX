@@ -3,23 +3,39 @@
 {% block title %}AI Assistant{% endblock %}
 {% block content %}
 <div class="chat-page">
+
+  <!-- Header -->
   <div class="chat-header">
-    <h1 class="page-title">💬 AI Assistant</h1>
+    <div class="chat-header-left">
+      <div class="chat-avatar">🕵️</div>
+      <div class="chat-title-group">
+        <span class="chat-title-name">Detective Conan</span>
+        <span class="chat-title-sub">IBM WatsonX AI Assistant · Background Check Suite</span>
+      </div>
+    </div>
     <div class="chat-header-right">
-      <span class="badge badge-granite" id="modelBadge">Powered by IBM Granite · watsonx.ai</span>
-      <button class="btn btn-sm btn-outline" onclick="clearChat()">Clear</button>
+      <span class="badge badge-granite" id="modelBadge">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="opacity:.7"><circle cx="5" cy="5" r="4"/></svg>
+        Powered by IBM Granite · watsonx.ai
+      </span>
+      <button class="btn btn-sm btn-ghost" onclick="clearChat()" title="Clear chat history">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        Clear
+      </button>
     </div>
   </div>
 
+  <!-- Message window -->
   <div class="chat-window" id="chatWindow">
     <div class="chat-msg assistant">
+      <div class="chat-msg-avatar">🕵️</div>
       <div class="msg-bubble">
-        Hello! I'm <strong>Detective Conan</strong>, your AI assistant.<br><br>
+        Hello! I'm <strong>Detective Conan</strong>, your AI assistant for background check reports.<br><br>
         I can help you:
         <ul>
-          <li>Look up background check reports — <em>"look up Manalo"</em> or <em>"look up Reyes"</em></li>
-          <li>Download report files — <em>"generate reports for Manalo"</em> or <em>"reports for July 2026"</em></li>
-          <li>Scan Box for new PDFs — <em>"scan box"</em></li>
+          <li>Look up reports — <em>"look up Manalo"</em> or <em>"look up Reyes"</em></li>
+          <li>Download files — <em>"generate reports for Manalo"</em></li>
+          <li>Scan Box — <em>"scan box"</em></li>
           <li>Run extraction — <em>"run extraction"</em></li>
           <li>View logs &amp; stats — <em>"logs this week"</em> · <em>"file status"</em></li>
         </ul>
@@ -27,11 +43,17 @@
     </div>
   </div>
 
+  <!-- Input bar -->
   <div class="chat-input-bar">
     <input type="text" id="chatInput" class="chat-input"
-           placeholder="Ask Detective Conan…"
+           placeholder="Ask Detective Conan anything…"
            onkeydown="if(event.key==='Enter')sendMsg()" />
-    <button class="btn btn-primary" onclick="sendMsg()" id="sendBtn">Send</button>
+    <button class="btn btn-primary" onclick="sendMsg()" id="sendBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+      Send
+    </button>
   </div>
 </div>
 
@@ -57,12 +79,14 @@ async function sendMsg() {
     });
     const data = await r.json();
     typing.remove();
-    // Update model badge to reflect which LLM answered
+
+    const badge = document.getElementById('modelBadge');
     if (data.model === 'ica') {
-      document.getElementById('modelBadge').textContent = 'Powered by IBM Consulting Advantage · ICA 1.0';
+      badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="opacity:.7"><circle cx="5" cy="5" r="4"/></svg> Powered by IBM Consulting Advantage · ICA 1.0`;
     } else {
-      document.getElementById('modelBadge').textContent = 'Powered by IBM Granite · watsonx.ai';
+      badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" style="opacity:.7"><circle cx="5" cy="5" r="4"/></svg> Powered by IBM Granite · watsonx.ai`;
     }
+
     const msgDiv = appendMsg('assistant', data.reply);
     history.push({ role: 'user',      content: msg });
     history.push({ role: 'assistant', content: data.reply });
@@ -73,7 +97,6 @@ async function sendMsg() {
       appendSystemMsg('Extraction started — check the Extract Files page for progress.');
     }
 
-    // If the reply was for a specific check section, scroll to and highlight it
     if (data.highlight) {
       requestAnimationFrame(() => highlightCheckSection(msgDiv, data.highlight));
     }
@@ -90,10 +113,17 @@ function appendMsg(role, html, raw=false) {
   const win    = document.getElementById('chatWindow');
   const div    = document.createElement('div');
   div.className = `chat-msg ${role}`;
-  const bubble  = document.createElement('div');
+
+  const av = document.createElement('div');
+  av.className = 'chat-msg-avatar';
+  av.textContent = role === 'assistant' ? '🕵️' : '👤';
+  div.appendChild(av);
+
+  const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
   bubble.innerHTML = raw ? html : formatReply(html);
   div.appendChild(bubble);
+
   win.appendChild(div);
   win.scrollTop = win.scrollHeight;
   return div;
@@ -102,13 +132,13 @@ function appendMsg(role, html, raw=false) {
 function appendSystemMsg(text) {
   const win = document.getElementById('chatWindow');
   const div = document.createElement('div');
-  div.className = 'chat-system-msg';
+  div.className   = 'chat-system-msg';
   div.textContent = text;
   win.appendChild(div);
   win.scrollTop = win.scrollHeight;
 }
 
-/* ── File extension icons ──────────────────────────────────────────────────── */
+/* ── File extension icons ─────────────────────────────────────────────────── */
 const EXT_ICON = { docx:'📄', xlsx:'📊', json:'📋', pdf:'📑' };
 
 function escHtml(s) {
@@ -118,7 +148,6 @@ function escHtml(s) {
 }
 
 function inlineMd(s) {
-  // Bold, then escape-safe emoji spans
   return escHtml(s)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/✅/g,'<span class="emoji-ok">✅</span>')
@@ -128,17 +157,15 @@ function inlineMd(s) {
 function statusBannerClass(txt) {
   const v = txt.toLowerCase();
   if (v.includes('clear') || v.includes('verified') || v.includes('pass')) return 'rpt-status-cleared';
-  if (v.includes('fail') || v.includes('adverse') || v.includes('unverified')) return 'rpt-status-failed';
+  if (v.includes('fail')  || v.includes('adverse')  || v.includes('unverified')) return 'rpt-status-failed';
   return 'rpt-status-default';
 }
 
 /**
  * Parse the §MARKER§…§END_MARKER§ rich protocol emitted by skill_lookup_report
- * and skill_generate_reports, then fall back to plain-markdown rendering for
- * everything else.
+ * and skill_generate_reports, then fall back to plain-markdown for everything else.
  */
 function formatReply(text) {
-  // If text contains our rich markers, use the rich renderer
   if (text.includes('§REPORT_HEADER§') || text.includes('§SECTION_HEADER§') ||
       text.includes('§MULTI_HEADER§')  || text.includes('§DOWNLOAD§')) {
     return formatRichReport(text);
@@ -148,11 +175,10 @@ function formatReply(text) {
 
 function formatRichReport(text) {
   let out = '';
-  // Split into lines and walk a simple state machine
   const lines = text.split('\n');
   let i = 0;
-  let inCard     = false;
-  let inFields   = false; // tracking whether a <table> is open
+  let inCard   = false;
+  let inFields = false;
 
   function closeFields() {
     if (inFields) { out += '</table>'; inFields = false; }
@@ -168,11 +194,9 @@ function formatRichReport(text) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // ── Multi-match header ──────────────────────────────────────────────────
     if (line.startsWith('§MULTI_HEADER§')) {
       closeCard();
       let body = line.replace('§MULTI_HEADER§','');
-      // collect until END_MULTI_HEADER
       i++;
       while (i < lines.length && !lines[i].includes('§END_MULTI_HEADER§')) {
         body += '\n' + lines[i]; i++;
@@ -185,19 +209,16 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── Report card header ───────────────────────────────────────────────────
     if (line.trim() === '§REPORT_HEADER§') {
       closeCard();
       openCard();
       closeFields();
-      // collect meta lines until END_REPORT_HEADER
       const metaLines = [];
       i++;
       while (i < lines.length && lines[i].trim() !== '§END_REPORT_HEADER§') {
         metaLines.push(lines[i]); i++;
       }
-      // First meta line: "Subject: X | Ref: Y | Delivery: Z"
-      const first = metaLines[0] || '';
+      const first    = metaLines[0] || '';
       const subjMatch = first.match(/Subject:\s*(.+?)\s*\|/);
       const refMatch  = first.match(/Ref:\s*(.+?)\s*\|/);
       const delMatch  = first.match(/Delivery:\s*(.+)/);
@@ -208,14 +229,13 @@ function formatRichReport(text) {
       out += `<div class="rpt-card-header">`;
       out += `<span class="rpt-subject">${escHtml(subj)}</span>`;
       out += `<span class="rpt-meta">`;
-      if (refNum)  out += `Ref: ${escHtml(refNum)}`;
-      if (delDate) out += ` &nbsp;·&nbsp; Delivery: ${escHtml(delDate)}`;
+      if (refNum)    out += `Ref: ${escHtml(refNum)}`;
+      if (delDate)   out += ` &nbsp;·&nbsp; Delivery: ${escHtml(delDate)}`;
       if (extraMeta) out += ` &nbsp;·&nbsp; ${extraMeta}`;
       out += `</span></div>`;
       i++; continue;
     }
 
-    // ── Overall status banner ────────────────────────────────────────────────
     if (line.startsWith('§STATUS_BANNER§')) {
       closeFields();
       const txt = line.replace('§STATUS_BANNER§','').replace('§END_STATUS_BANNER§','').trim();
@@ -224,7 +244,6 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── Section header (Employment / References / DB Checks) ────────────────
     if (line.startsWith('§SECTION_HEADER§')) {
       closeFields();
       const txt = line.replace('§SECTION_HEADER§','').replace('§END_SECTION_HEADER§','').trim();
@@ -232,7 +251,6 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── Sub-section (individual employer / referee) ──────────────────────────
     if (line.startsWith('§SUBSECTION§')) {
       closeFields();
       const txt = line.replace('§SUBSECTION§','').replace('§END_SUBSECTION§','').trim();
@@ -240,7 +258,6 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── Field row: §FIELD§Label§SEP§Value§END_FIELD§ ─────────────────────────
     if (line.startsWith('§FIELD§')) {
       if (!inFields) { out += '<table class="rpt-fields-table">'; inFields = true; }
       const inner = line.replace('§FIELD§','').replace('§END_FIELD§','');
@@ -256,7 +273,6 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── DB Check row: §DB_CHECK§icon Name§SEP§icon Status§END_DB_CHECK§ ──────
     if (line.startsWith('§DB_CHECK§')) {
       closeFields();
       const inner = line.replace('§DB_CHECK§','').replace('§END_DB_CHECK§','');
@@ -267,8 +283,6 @@ function formatRichReport(text) {
       out += `<span class="rpt-db-check-name">${escHtml(name)}</span>`;
       out += `<span class="rpt-db-check-status">${escHtml(stat)}</span>`;
       out += `</div>`;
-      // Peek ahead: collect any immediately-following §FIELD§Result/Source rows
-      // and render them as compact indented detail lines (not in the fields table)
       i++;
       while (i < lines.length && lines[i].startsWith('§FIELD§')) {
         const fi   = lines[i].replace('§FIELD§','').replace('§END_FIELD§','');
@@ -283,7 +297,6 @@ function formatRichReport(text) {
       continue;
     }
 
-    // ── Download link: §DOWNLOAD§label§SEP§/api/download/...§END_DOWNLOAD§ ───
     if (line.startsWith('§DOWNLOAD§')) {
       closeFields();
       const inner = line.replace('§DOWNLOAD§','').replace('§END_DOWNLOAD§','');
@@ -297,19 +310,11 @@ function formatRichReport(text) {
       i++; continue;
     }
 
-    // ── End of report card ───────────────────────────────────────────────────
-    if (line.trim() === '§REPORT_END§') {
-      closeCard();
-      i++; continue;
-    }
-
-    // ── End of multi-header (already consumed above, skip stray) ────────────
+    if (line.trim() === '§REPORT_END§') { closeCard(); i++; continue; }
     if (line.includes('§END_MULTI_HEADER§')) { i++; continue; }
 
-    // ── Plain text / blank lines ─────────────────────────────────────────────
     closeFields();
     if (line.trim() === '') {
-      // blank separator between cards — don't output extra <br> inside a card
       if (!inCard) out += '<br>';
     } else {
       out += formatMarkdown(line) + (inCard ? '' : '<br>');
@@ -323,20 +328,13 @@ function formatRichReport(text) {
 function formatMarkdown(text) {
   let t = text
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-  // Horizontal rules
   t = t.replace(/^---+\s*$/gm, '<hr class="msg-hr">');
-  // Headings
   t = t.replace(/^###\s+(.+)$/gm, '<h4 class="msg-h4">$1</h4>');
   t = t.replace(/^##\s+(.+)$/gm,  '<h3 class="msg-h3">$1</h3>');
-  // Bold
   t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Bullet lists
   t = t.replace(/^[•\-]\s+(.+)$/gm, '<li>$1</li>');
   t = t.replace(/(<li>.*<\/li>\n?)+/g, m => '<ul class="msg-list">' + m + '</ul>');
-  // Newlines
   t = t.replace(/\n(?!<(?:ul|li|hr|h[234]))/g, '<br>');
-  // Emoji spans
   t = t.replace(/✅/g, '<span class="emoji-ok">✅</span>');
   t = t.replace(/❌/g, '<span class="emoji-err">❌</span>');
   return t;
@@ -346,44 +344,31 @@ function clearChat() {
   history = [];
   document.getElementById('chatWindow').innerHTML = `
     <div class="chat-msg assistant">
+      <div class="chat-msg-avatar">🕵️</div>
       <div class="msg-bubble">Chat cleared. How can I help you?</div>
     </div>`;
 }
 
-/**
- * After rendering a full report card, scroll to and briefly highlight
- * the DB check row that matches the requested section name.
- * highlight: string like "Social Media" or "Adverse Media"
- */
 function highlightCheckSection(msgDiv, highlight) {
   if (!msgDiv || !highlight) return;
-  const h = highlight.toLowerCase();
-
-  // Find all rpt-db-check-row elements inside this message bubble
+  const h    = highlight.toLowerCase();
   const rows = msgDiv.querySelectorAll('.rpt-db-check-row');
   let target = null;
   for (const row of rows) {
     const name = (row.querySelector('.rpt-db-check-name') || row).textContent.toLowerCase();
     if (name.includes(h)) { target = row; break; }
   }
-
-  // Also check rpt-section-header text (e.g. Employment Verification, etc.)
   if (!target) {
     const headers = msgDiv.querySelectorAll('.rpt-section-header, .rpt-subsection');
     for (const hdr of headers) {
       if (hdr.textContent.toLowerCase().includes(h)) { target = hdr; break; }
     }
   }
-
   if (!target) return;
-
-  // Scroll the chat window so the target row is near the top
-  const win = document.getElementById('chatWindow');
+  const win    = document.getElementById('chatWindow');
   const rowTop = target.getBoundingClientRect().top;
   const winTop = win.getBoundingClientRect().top;
-  win.scrollTop += (rowTop - winTop) - 60;  // 60px offset from top
-
-  // Add highlight pulse class, remove after animation
+  win.scrollTop += (rowTop - winTop) - 60;
   target.classList.add('rpt-section-highlight');
   setTimeout(() => target.classList.remove('rpt-section-highlight'), 2800);
 }
