@@ -1,0 +1,58 @@
+{
+  "name": "pdf-extractor-v3",
+  "version": "3.0.0",
+  "description": "Background Check Report Automation V3 — Electron Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start":   "electron .",
+    "pack":    "electron-builder --dir",
+    "dist":    "electron-builder --win"
+  },
+  "build": {
+    "appId":       "com.ibm.pdf-extractor-v3",
+    "productName": "PDF Extractor V3",
+    "directories": {
+      "buildResources": "assets",
+      "output":         "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/backend",
+        "to":   "backend",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis",     "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false,
+      "sign": null
+    },
+    "nsis": {
+      "oneClick":                          false,
+      "allowToChangeInstallationDirectory": true,
+      "installerHeaderIcon":               "assets/icon.ico",
+      "createDesktopShortcut":             true,
+      "createStartMenuShortcut":           true,
+      "shortcutName":                      "PDF Extractor V3",
+      "artifactName":                      "PDF-Extractor-V3-Setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "PDF-Extractor-V3-Portable-${version}.exe"
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron":         "^32.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

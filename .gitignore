@@ -16,6 +16,14 @@ env/
 # Box JWT private key file (contains an encrypted RSA private key + passphrase)
 box_jwt_config.json
 
+# App config files contain live Box secrets + ICA session cookies. NEVER commit.
+# Commit a config.example.json / config.template.json instead (see !exceptions below).
+config.json
+**/config.json
+!**/config.example.json
+!**/config.template.json
+
+
 # -- PyInstaller build artifacts -----------------------------------------------
 *.spec
 build/
@@ -49,6 +57,33 @@ PDF Extractor/Local Folder/
 # -- ICA cookie parser (local tool only) --------------------------------------
 ICA Cookie Parser/
 
-# -- Retired versions — kept locally, never push to remote --------------------
+
+# -- System files (local tool only)
+node_modules/
+dist/
+build/
+.cline
+.claude
+pdf_extractor_v3.db*
 PDF Extractor/
 WatsonX Challenge - Web/
+
+# -- PDF Extractor V3 build artifacts (never commit generated output) ----------
+# PyInstaller-bundled backend (~1000 files: DLLs, tzdata, dist-info)
+PDF Extractor V3/electron/resources/
+# Vite-built renderer output
+PDF Extractor V3/electron/renderer/
+# Electron-builder packaged output
+PDF Extractor V3/dist/
+PDF Extractor V3/electron/dist/
+# Backend build staging + generated icon
+PDF Extractor V3/backend/build/
+PDF Extractor V3/backend/dist/
+# Runtime port file written by main.js on launch
+PDF Extractor V3/.v3_port
+**/.v3_port
+# asar extraction check dir
+PDF Extractor V3/electron/_asar_check/
+# Local frontend env (points at a dev port only, but keep local)
+PDF Extractor V3/frontend/.env.local
+

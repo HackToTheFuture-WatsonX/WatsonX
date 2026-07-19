@@ -97,32 +97,39 @@ def _archive_folder() -> Path:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Colour palette  (modern, soft)
 # ─────────────────────────────────────────────────────────────────────────────
-CLR_BG      = "#F4F6FA"          # very light blue-grey page bg
-CLR_SIDEBAR = "#1A2B4A"          # deep navy sidebar
-CLR_SIDEBAR_HOVER = "#243C63"    # slightly lighter on hover
-CLR_ACCENT  = "#3B7DD8"          # softer cobalt blue
-CLR_WHITE   = "#FFFFFF"
-CLR_CARD    = "#FFFFFF"          # card / panel surface
-CLR_TEXT    = "#1C2333"          # near-black text
-CLR_MUTED   = "#6B7280"          # grey muted text
-CLR_GREEN   = "#1E8A4C"          # richer green
-CLR_ORANGE  = "#C0511F"          # softer burnt-orange
-CLR_PENDING = "#C9860C"          # amber
-CLR_TEAL    = "#0B8B8B"          # teal for Sync
+# Colour palette  v3.0 — deep navy sidebar, vibrant indigo-violet accent,
+#                        glass-effect cards, premium typography
+# ─────────────────────────────────────────────────────────────────────────────
+CLR_BG           = "#EEF0F8"          # soft lavender-grey page background
+CLR_SIDEBAR      = "#0A0E1A"          # ultra-deep navy sidebar
+CLR_SIDEBAR_HOVER = "#16203A"         # slightly lighter nav hover
+CLR_ACCENT       = "#6C63FF"          # indigo-violet primary accent
+CLR_ACCENT2      = "#A78BFA"          # soft violet secondary
+CLR_ACCENT_DARK  = "#5B52F0"          # darker accent for active state
+CLR_WHITE        = "#FFFFFF"
+CLR_CARD         = "#FFFFFF"          # card / panel surface
+CLR_TEXT         = "#0D1117"          # near-black rich text
+CLR_MUTED        = "#6B7280"          # muted grey text
+CLR_GREEN        = "#16A34A"          # success green
+CLR_GREEN_BG     = "#22C55E"          # brighter green for buttons
+CLR_ORANGE       = "#C05621"          # error/warning orange
+CLR_PENDING      = "#D97706"          # amber pending
+CLR_TEAL         = "#0D9488"          # teal for Sync
 
 # Card/panel border — very subtle
-CLR_BORDER  = "#E2E8F0"
+CLR_BORDER       = "#E4E7EF"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Font definitions
+# Font definitions  — Inter/Segoe UI, tighter weights
 # ─────────────────────────────────────────────────────────────────────────────
-FONT_TITLE = ("Segoe UI", 14, "bold")
-FONT_LABEL = ("Segoe UI", 10)
-FONT_BOLD  = ("Segoe UI", 10, "bold")
-FONT_SMALL = ("Segoe UI", 9)
-FONT_MONO  = ("Consolas", 9)
+FONT_TITLE  = ("Segoe UI", 15, "bold")
+FONT_LABEL  = ("Segoe UI", 10)
+FONT_BOLD   = ("Segoe UI", 10, "bold")
+FONT_SMALL  = ("Segoe UI", 9)
+FONT_MONO   = ("Consolas", 9)
+FONT_H2     = ("Segoe UI", 13, "bold")
+FONT_TINY   = ("Segoe UI", 8)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RoundedFrame — canvas-backed frame with soft rounded corners
@@ -471,30 +478,46 @@ class PDFExtractorAppV2(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Background Check Report Automation V2")
-        self.geometry("1150x720")
-        self.minsize(950, 620)
+        self.geometry("1200x740")
+        self.minsize(1000, 640)
         self.configure(bg=CLR_BG)
         self.resizable(True, True)
 
-        # Modern ttk overrides
+        # ── ttk theme overrides ───────────────────────────────────────────────
         _style = ttk.Style(self)
         try:
             _style.theme_use("clam")
         except Exception:
             pass
+        # Progress bar — glowing indigo pill
         _style.configure("TProgressbar",
-                         troughcolor=CLR_BORDER, background=CLR_ACCENT,
-                         bordercolor=CLR_BORDER, lightcolor=CLR_ACCENT,
-                         darkcolor=CLR_ACCENT, thickness=6)
-        _style.configure("TSeparator",  background=CLR_BORDER)
+                         troughcolor="#D4D8F0", background=CLR_ACCENT,
+                         bordercolor="#D4D8F0", lightcolor=CLR_ACCENT,
+                         darkcolor=CLR_ACCENT_DARK, thickness=7)
+        _style.configure("TSeparator", background=CLR_BORDER)
+        # Scrollbars — slim, minimal
         _style.configure("Vertical.TScrollbar",
-                         background=CLR_BG, troughcolor=CLR_BORDER,
-                         bordercolor=CLR_BORDER, arrowcolor=CLR_MUTED,
-                         gripcount=0)
+                         background=CLR_BG, troughcolor=CLR_BG,
+                         bordercolor=CLR_BG, arrowcolor=CLR_MUTED,
+                         gripcount=0, width=8)
         _style.configure("Horizontal.TScrollbar",
-                         background=CLR_BG, troughcolor=CLR_BORDER,
-                         bordercolor=CLR_BORDER, arrowcolor=CLR_MUTED,
-                         gripcount=0)
+                         background=CLR_BG, troughcolor=CLR_BG,
+                         bordercolor=CLR_BG, arrowcolor=CLR_MUTED,
+                         gripcount=0, width=8)
+        # Treeview — cleaner rows
+        _style.configure("Treeview",
+                         background=CLR_CARD, foreground=CLR_TEXT,
+                         fieldbackground=CLR_CARD, rowheight=32,
+                         font=("Segoe UI", 9), borderwidth=0)
+        _style.configure("Treeview.Heading",
+                         background="#0D1117", foreground=CLR_WHITE,
+                         font=("Segoe UI", 9, "bold"), relief="flat",
+                         borderwidth=0, padding=(8, 6))
+        _style.map("Treeview",
+                   background=[("selected", CLR_ACCENT)],
+                   foreground=[("selected", CLR_WHITE)])
+        _style.map("Treeview.Heading",
+                   background=[("active", "#1E293B")])
 
         self.db = load_tracking()
 
@@ -555,76 +578,105 @@ class PDFExtractorAppV2(tk.Tk):
 
     # ── Layout construction ───────────────────────────────────────────────────
     def _build_layout(self):
-        # ── Sidebar ───────────────────────────────────────────────────────────
-        sidebar = tk.Frame(self, bg=CLR_SIDEBAR, width=220)
+        # ── Sidebar — deep navy, ambient glow ─────────────────────────────────
+        sidebar = tk.Frame(self, bg=CLR_SIDEBAR, width=238)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
 
-        # App title in sidebar
-        tk.Label(
-            sidebar,
-            text="Background Check\nReport Automation V2",
-            bg=CLR_SIDEBAR, fg=CLR_WHITE,
-            font=("Segoe UI", 11, "bold"),
-            pady=22,
-        ).pack(fill="x", padx=4)
+        # ── Logo / brand header ───────────────────────────────────────────────
+        brand_frame = tk.Frame(sidebar, bg=CLR_SIDEBAR)
+        brand_frame.pack(fill="x", padx=16, pady=(26, 14))
 
-        # Thin separator line
-        tk.Frame(sidebar, bg="#2E4A70", height=1).pack(fill="x", padx=16, pady=(0, 4))
+        # Accent icon pill
+        icon_pill = tk.Frame(brand_frame, bg=CLR_ACCENT, width=38, height=38)
+        icon_pill.pack(side="left")
+        icon_pill.pack_propagate(False)
+        tk.Label(icon_pill, text="✓", bg=CLR_ACCENT, fg=CLR_WHITE,
+                 font=("Segoe UI", 14, "bold")).place(relx=.5, rely=.5, anchor="center")
+
+        title_frame = tk.Frame(brand_frame, bg=CLR_SIDEBAR)
+        title_frame.pack(side="left", padx=(10, 0))
+        tk.Label(title_frame, text="BG Check",
+                 bg=CLR_SIDEBAR, fg=CLR_WHITE,
+                 font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        tk.Label(title_frame, text="Automation  V2",
+                 bg=CLR_SIDEBAR, fg=CLR_ACCENT2,
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        # ── Divider ───────────────────────────────────────────────────────────
+        tk.Frame(sidebar, bg="#1E2D4A", height=1).pack(fill="x", padx=14, pady=(0, 6))
+
+        # ── Section label ─────────────────────────────────────────────────────
+        tk.Label(sidebar, text="NAVIGATION",
+                 bg=CLR_SIDEBAR, fg="#3A4D6A",
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=20, pady=(6, 2))
 
         nav_items = [
-            ("\u2302  Home",                    "home"),
-            ("\u229e  Scan Local Folder",       "scan"),
-            ("\u21bb  Sync Box to Local",       "sync"),
-            ("\u2699  Extract Files",           "extract"),
-            ("\u25a4  View Extracted Files",    "view"),
-            ("\u2662  Chat with AI Assistant",  "chat"),
+            ("⌂  Home",                   "home"),
+            ("⊞  Scan Local Folder",      "scan"),
+            ("↻  Sync Box to Local",      "sync"),
+            ("⚙  Extract Files",          "extract"),
+            ("◈  View Extracted Files",   "view"),
         ]
+        # Separator before Assistant
+        _assistant_items = [
+            ("◇  Chat with AI Assistant", "chat"),
+        ]
+
         self._nav_btns = {}
-        for label, key in nav_items:
+
+        def _make_nav(label, key):
             btn = tk.Button(
                 sidebar,
-                text=label,
-                bg=CLR_SIDEBAR, fg="#CBD5E1",
-                font=FONT_LABEL,
-                anchor="w", padx=18, pady=11,
+                text=f"  {label}",
+                bg=CLR_SIDEBAR, fg="#8B9DC0",
+                font=("Segoe UI", 10),
+                anchor="w", padx=10, pady=10,
                 relief="flat", cursor="hand2",
                 activebackground=CLR_SIDEBAR_HOVER,
                 activeforeground=CLR_WHITE,
                 command=lambda k=key: self._show_frame(k),
                 bd=0,
             )
-            btn.pack(fill="x")
-            # Hover glow
-            btn.bind("<Enter>", lambda e, b=btn, k=key: (
+            btn.pack(fill="x", padx=10, pady=1)
+            btn.bind("<Enter>", lambda e, b=btn: (
                 b.config(bg=CLR_SIDEBAR_HOVER, fg=CLR_WHITE)
-                if b.cget("bg") != CLR_ACCENT else None
+                if b.cget("bg") not in (CLR_ACCENT, CLR_ACCENT_DARK) else None
             ))
             btn.bind("<Leave>", lambda e, b=btn, k=key: (
-                b.config(bg=CLR_ACCENT if self._nav_btns.get(k) and
-                         self._nav_btns[k].cget("bg") == CLR_ACCENT
-                         else CLR_SIDEBAR, fg="#CBD5E1"
-                         if self._nav_btns.get(k) and
-                         self._nav_btns[k].cget("bg") != CLR_ACCENT else CLR_WHITE)
+                b.config(bg=CLR_ACCENT_DARK if self._active_key == k else CLR_SIDEBAR,
+                         fg=CLR_WHITE if self._active_key == k else "#8B9DC0")
             ))
             self._nav_btns[key] = btn
 
+        self._active_key = "home"
+        for label, key in nav_items:
+            _make_nav(label, key)
+
+        # Assistant section
+        tk.Frame(sidebar, bg="#1E2D4A", height=1).pack(fill="x", padx=14, pady=(10, 4))
+        tk.Label(sidebar, text="ASSISTANT",
+                 bg=CLR_SIDEBAR, fg="#3A4D6A",
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=20, pady=(2, 2))
+        for label, key in _assistant_items:
+            _make_nav(label, key)
+
         # ── Version / patch badge ─────────────────────────────────────────────
-        ver_frame = tk.Frame(sidebar, bg="#0F1E35",
-                             highlightbackground="#1E3A55", highlightthickness=1)
+        ver_frame = tk.Frame(sidebar, bg="#060A14",
+                             highlightbackground="#1A2540", highlightthickness=1)
         ver_frame.pack(side="bottom", fill="x", padx=12, pady=12)
         tk.Label(
             ver_frame,
             text=f"v{APP_VERSION}  ·  {BUILD_PATCH}",
-            bg="#0F1E35", fg="#6EA8D8",
+            bg="#060A14", fg=CLR_ACCENT2,
             font=("Segoe UI", 9, "bold"),
             pady=6,
         ).pack()
         tk.Label(
             ver_frame,
             text=BUILD_DATE,
-            bg="#0F1E35", fg="#3A6080",
-            font=("Segoe UI", 8),
+            bg="#060A14", fg="#2A4060",
+            font=FONT_TINY,
             pady=2,
         ).pack()
 
@@ -647,15 +699,41 @@ class PDFExtractorAppV2(tk.Tk):
             self._frames[key] = frame
 
     def _show_frame(self, key: str):
+        self._active_key = key
         for k, btn in self._nav_btns.items():
             if k == key:
-                btn.config(bg=CLR_ACCENT, fg=CLR_WHITE)
+                btn.config(bg=CLR_ACCENT_DARK, fg=CLR_WHITE,
+                           font=("Segoe UI", 10, "bold"))
             else:
-                btn.config(bg=CLR_SIDEBAR, fg="#CBD5E1")
+                btn.config(bg=CLR_SIDEBAR, fg="#8B9DC0",
+                           font=("Segoe UI", 10))
         frame = self._frames[key]
         frame.lift()
         if hasattr(frame, "on_show"):
             self.after(0, frame.on_show)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UI helpers — colour blending, icon map
+# ──────────────────────────────────────────────────────────────────────────────
+def _hex_alpha(hex_colour: str, alpha: float) -> str:
+    """Blend a hex colour toward white by alpha (0=white, 1=full colour)."""
+    hex_colour = hex_colour.lstrip("#")
+    r, g, b = int(hex_colour[0:2],16), int(hex_colour[2:4],16), int(hex_colour[4:6],16)
+    r2 = int(r * alpha + 255 * (1 - alpha))
+    g2 = int(g * alpha + 255 * (1 - alpha))
+    b2 = int(b * alpha + 255 * (1 - alpha))
+    return f"#{r2:02X}{g2:02X}{b2:02X}"
+
+
+_CARD_ICONS = {
+    "[SCAN]":    "⊞",
+    "[SYNC]":    "↻",
+    "[EXTRACT]": "⚙",
+    "[VIEW]":    "◈",
+    "[AI]":      "◇",
+    "[CHART]":   "▣",
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -666,26 +744,45 @@ class HomeFrame(tk.Frame):
         super().__init__(parent, bg=CLR_BG)
         self.app = app
 
-        # Page heading
-        tk.Label(
-            self,
-            text="Background Check Report Automation V2",
-            bg=CLR_BG, fg=CLR_MUTED,
-            font=("Segoe UI", 13),
-        ).pack(pady=(44, 4))
-        tk.Label(
-            self,
-            text="Select a step below to begin",
-            bg=CLR_BG, fg="#A0AEC0",
-            font=("Segoe UI", 9),
-        ).pack(pady=(0, 4))
+        # ── Hero banner ───────────────────────────────────────────────────────
+        hero = tk.Frame(self, bg="#1A1040",
+                        highlightbackground="#2D1F6E", highlightthickness=1)
+        hero.pack(fill="x", padx=28, pady=(26, 0))
 
-        # Thin divider
-        tk.Frame(self, bg=CLR_BORDER, height=1).pack(fill="x", padx=100, pady=18)
+        hero_inner = tk.Frame(hero, bg="#1A1040")
+        hero_inner.pack(fill="x", padx=36, pady=28)
 
-        # ── Row 1: Scan → Sync → Extract (steps 1-3) ─────────────────────────
+        # Eyebrow pill
+        eyebrow = tk.Frame(hero_inner, bg="#2A1860",
+                           highlightbackground="#4A3090", highlightthickness=1)
+        eyebrow.pack(anchor="w", pady=(0, 10))
+        tk.Label(eyebrow, text="  ● IBM WatsonX · Powered  ",
+                 bg="#2A1860", fg="#A78BFA",
+                 font=("Segoe UI", 8, "bold")).pack()
+
+        tk.Label(hero_inner,
+                 text="Background Check Report\nAutomation  V2",
+                 bg="#1A1040", fg=CLR_WHITE,
+                 font=("Segoe UI", 22, "bold"),
+                 justify="left").pack(anchor="w")
+        tk.Label(hero_inner,
+                 text="Sync, scan, extract and analyze background check PDFs — "
+                      "powered by IBM Box\nand AI-grounded report lookup.",
+                 bg="#1A1040", fg="#7B8DB8",
+                 font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(6, 0))
+
+        # ── Quick access section ──────────────────────────────────────────────
+        sec_frame = tk.Frame(self, bg=CLR_BG)
+        sec_frame.pack(fill="x", padx=28, pady=(22, 0))
+        tk.Label(sec_frame, text="QUICK ACCESS",
+                 bg=CLR_BG, fg=CLR_MUTED,
+                 font=("Segoe UI", 8, "bold")).pack(side="left")
+        tk.Frame(sec_frame, bg=CLR_BORDER, height=1).pack(
+            side="left", fill="x", expand=True, padx=(12, 0), pady=5)
+
+        # ── Row 1: Scan → Sync → Extract ─────────────────────────────────────
         row1 = tk.Frame(self, bg=CLR_BG)
-        row1.pack()
+        row1.pack(fill="x", padx=28, pady=(10, 0))
         for icon, title, desc, key in [
             ("[SCAN]",    "Scan Local Folder",
              "Scan Local Folder for PDFs\nand view their status.",         "scan"),
@@ -696,9 +793,9 @@ class HomeFrame(tk.Frame):
         ]:
             self._make_card(row1, icon, title, desc, key)
 
-        # ── Row 2: View → Chat (steps 4-5) ───────────────────────────────────
+        # ── Row 2: View → Chat ────────────────────────────────────────────────
         row2 = tk.Frame(self, bg=CLR_BG)
-        row2.pack(pady=(6, 10))
+        row2.pack(fill="x", padx=28, pady=(8, 10))
         for icon, title, desc, key in [
             ("[VIEW]",    "View Extracted Files",
              "Browse extracted Word / Excel\nand JSON files by type.",     "view"),
@@ -709,48 +806,58 @@ class HomeFrame(tk.Frame):
 
     def _make_card(self, parent, icon, title, desc, key):
         _ICON_COLOURS = {
-            "[SCAN]":    "#3B7DD8", "[SYNC]":    "#0B8B8B",
-            "[EXTRACT]": "#1E8A4C", "[VIEW]":    "#9B5A1A",
-            "[AI]":      "#1A3A6A", "[CHART]":   "#6A4CC4",
+            "[SCAN]":    CLR_ACCENT,   "[SYNC]":    CLR_TEAL,
+            "[EXTRACT]": CLR_GREEN_BG, "[VIEW]":    "#F59E0B",
+            "[AI]":      CLR_ACCENT2,  "[CHART]":   "#8B5CF6",
         }
         accent = _ICON_COLOURS.get(icon, CLR_ACCENT)
         nav = lambda e, k=key: self.app._show_frame(k)
 
-        # Rounded card shell
+        # Rounded card shell — slightly taller, modern proportions
         rf = RoundedFrame(parent, radius=14, bg_fill=CLR_CARD,
                           border_color=CLR_BORDER, border_width=1,
-                          cursor="hand2", width=200, height=140)
+                          cursor="hand2", width=210, height=152)
         rf.pack(side="left", padx=10, pady=8)
         rf.bind("<Button-1>", nav)
-        rf.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+        rf.bind("<Enter>", lambda e, r=rf: r.set_border_color(accent))
         rf.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
 
         inner = rf.inner
         inner.bind("<Button-1>", nav)
-        inner.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+        inner.bind("<Enter>", lambda e, r=rf: r.set_border_color(accent))
         inner.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
 
-        # Thin coloured top bar inside the rounded card
-        pill = tk.Frame(inner, bg=accent, height=5)
+        # Bold top accent bar
+        pill = tk.Frame(inner, bg=accent, height=4)
         pill.pack(fill="x")
         pill.bind("<Button-1>", nav)
 
-        lbl_icon = tk.Label(
-            inner, text=icon.strip("[]"),
-            bg=CLR_CARD, fg=accent,
-            font=("Segoe UI", 11, "bold"),
-            width=16,
-        )
+        # Icon badge (rounded feel via padded label)
+        icon_frame = tk.Frame(inner, bg=CLR_CARD)
+        icon_frame.pack(pady=(10, 4))
+        icon_frame.bind("<Button-1>", nav)
+        icon_badge = tk.Frame(icon_frame, bg=_hex_alpha(accent, 0.12),
+                              highlightbackground=_hex_alpha(accent, 0.20),
+                              highlightthickness=1, width=40, height=40)
+        icon_badge.pack()
+        icon_badge.pack_propagate(False)
+        icon_badge.bind("<Button-1>", nav)
+        tk.Label(icon_badge, text=_CARD_ICONS.get(icon, "✦"),
+                 bg=_hex_alpha(accent, 0.12), fg=accent,
+                 font=("Segoe UI", 14)).place(relx=.5, rely=.5, anchor="center")
+
         lbl_title = tk.Label(inner, text=title, bg=CLR_CARD, fg=CLR_TEXT,
-                             font=FONT_BOLD, width=22)
+                             font=("Segoe UI", 10, "bold"), width=22)
         lbl_desc  = tk.Label(inner, text=desc, bg=CLR_CARD, fg=CLR_MUTED,
                              font=FONT_SMALL, justify="center")
-        lbl_icon.pack(pady=(8, 2))
+        lbl_arrow = tk.Label(inner, text="Open →", bg=CLR_CARD, fg=accent,
+                             font=("Segoe UI", 8, "bold"), cursor="hand2")
         lbl_title.pack(pady=(0, 2))
-        lbl_desc.pack(pady=(0, 8))
-        for w in (lbl_icon, lbl_title, lbl_desc):
+        lbl_desc.pack(pady=(0, 4))
+        lbl_arrow.pack(pady=(0, 8))
+        for w in (lbl_title, lbl_desc, lbl_arrow):
             w.bind("<Button-1>", nav)
-            w.bind("<Enter>", lambda e, r=rf: r.set_border_color(CLR_ACCENT))
+            w.bind("<Enter>", lambda e, r=rf: r.set_border_color(accent))
             w.bind("<Leave>", lambda e, r=rf: r.set_border_color(CLR_BORDER))
 
 
@@ -774,15 +881,20 @@ class SyncFrame(tk.Frame):
 
         # ── Header ────────────────────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="Sync Folder", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        hdr.pack(fill="x", padx=28, pady=(24, 4))
+        title_col = tk.Frame(hdr, bg=CLR_BG)
+        title_col.pack(side="left")
+        tk.Label(title_col, text="Sync Folder", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(title_col, text="Sync IBM Box folder → Local Folder",
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
         self._sync_btn = tk.Button(
             hdr,
-            text="  🔄  Sync Now  ",
+            text="  ↻  Sync Now  ",
             bg=CLR_TEAL, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat",
-            cursor="hand2", padx=8, pady=6,
+            cursor="hand2", padx=12, pady=8,
+            bd=0, activebackground="#0F766E", activeforeground=CLR_WHITE,
             command=self._sync_now,
         )
         self._sync_btn.pack(side="right")
@@ -790,25 +902,26 @@ class SyncFrame(tk.Frame):
         # ── Status / auto-sync label ──────────────────────────────────────────
         self._status_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._status_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=28)
 
         # ── Progress bar ──────────────────────────────────────────────────────
         self._progress = ttk.Progressbar(self, orient="horizontal", mode="indeterminate")
-        self._progress.pack(fill="x", padx=24, pady=(4, 4))
+        self._progress.pack(fill="x", padx=28, pady=(6, 4))
 
         # ── Log area ──────────────────────────────────────────────────────────
-        tk.Label(self, text="Sync Log", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_BOLD).pack(anchor="w", padx=24, pady=(10, 2))
-        log_rf = RoundedFrame(self, radius=10, bg_fill=CLR_CARD,
-                              border_color=CLR_BORDER, border_width=1)
-        log_rf.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        tk.Label(self, text="SYNC LOG", bg=CLR_BG,
+                 fg=CLR_MUTED, font=("Segoe UI", 8, "bold")).pack(
+                     anchor="w", padx=28, pady=(12, 3))
+        log_rf = RoundedFrame(self, radius=12, bg_fill="#0D1117",
+                              border_color="#1E2D3D", border_width=1)
+        log_rf.pack(fill="both", expand=True, padx=28, pady=(0, 24))
         log_inner = log_rf.inner
 
         self._log_box = tk.Text(
-            log_inner, bg=CLR_CARD, fg=CLR_TEXT,
-            font=FONT_MONO, relief="flat", state="disabled",
+            log_inner, bg="#0D1117", fg="#7DD3A8",
+            font=("Consolas", 9), relief="flat", state="disabled",
             highlightthickness=0, bd=0,
-            padx=10, pady=8,
+            padx=14, pady=10, insertbackground="#7DD3A8",
         )
         sb = ttk.Scrollbar(log_inner, orient="vertical", command=self._log_box.yview)
         self._log_box.configure(yscrollcommand=sb.set)
@@ -829,7 +942,8 @@ class SyncFrame(tk.Frame):
         if self._syncing:
             return
         self._syncing = True
-        self._sync_btn.config(state="disabled", text="  ⏳  Syncing…  ")
+        self._sync_btn.config(state="disabled", text="  ⏳  Syncing…  ",
+                              bg="#0A5E59")
         self._progress.start(12)
         # Clear old log
         self._log_box.config(state="normal")
@@ -870,7 +984,7 @@ class SyncFrame(tk.Frame):
             self._syncing = False
             self.after(0, self._progress.stop)
             self.after(0, lambda: self._sync_btn.config(
-                state="normal", text="  🔄  Sync Now  "
+                state="normal", text="  ↻  Sync Now  ", bg=CLR_TEAL
             ))
 
 
@@ -890,15 +1004,20 @@ class ScanFolderFrame(tk.Frame):
 
         # ── Header ────────────────────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="Scan Folder", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        hdr.pack(fill="x", padx=28, pady=(24, 4))
+        title_col = tk.Frame(hdr, bg=CLR_BG)
+        title_col.pack(side="left")
+        tk.Label(title_col, text="Scan Folder", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(title_col, text="Scan Local Folder for PDF files",
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
         self._scan_btn = tk.Button(
             hdr,
-            text="  🔍  Scan Local Folder  ",
+            text="  ⊞  Scan Local Folder  ",
             bg=CLR_ACCENT, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat",
-            cursor="hand2", padx=8, pady=6,
+            cursor="hand2", padx=12, pady=8,
+            bd=0, activebackground=CLR_ACCENT_DARK, activeforeground=CLR_WHITE,
             command=self._scan,
         )
         self._scan_btn.pack(side="right")
@@ -906,26 +1025,28 @@ class ScanFolderFrame(tk.Frame):
         # ── Summary bar ───────────────────────────────────────────────────────
         self._summary_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._summary_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=28)
 
         # ── Status bar ────────────────────────────────────────────────────────
         self._status_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._status_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(side="bottom", pady=6)
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(side="bottom", pady=8)
 
         # ── Table ─────────────────────────────────────────────────────────────
         table_frame = tk.Frame(self, bg=CLR_BG)
-        table_frame.pack(fill="both", expand=True, padx=24, pady=(0, 8))
+        table_frame.pack(fill="both", expand=True, padx=28, pady=(6, 8))
 
         cols = ("File Name", "Relative Path", "Status", "Last Extracted", "Reference No.")
         self._tree = ttk.Treeview(table_frame, columns=cols, show="headings",
                                   selectmode="browse")
-        widths = [260, 200, 90, 160, 160]
+        widths = [260, 200, 100, 160, 160]
         for col, w in zip(cols, widths):
             self._tree.heading(col, text=col)
-            self._tree.column(col, width=w, anchor="w")
-        self._tree.tag_configure("pending",   foreground=CLR_ORANGE)
-        self._tree.tag_configure("completed", foreground=CLR_GREEN)
+            self._tree.column(col, width=w, anchor="w", minwidth=60)
+        self._tree.tag_configure("pending",   foreground=CLR_PENDING,
+                                 background="#FFFBEB")
+        self._tree.tag_configure("completed", foreground=CLR_GREEN,
+                                 background="#F0FDF4")
 
         sb = ttk.Scrollbar(table_frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=sb.set)
@@ -934,10 +1055,13 @@ class ScanFolderFrame(tk.Frame):
 
         self._empty_label = tk.Label(
             table_frame,
-            text="No PDF files found in Local Folder",
-            bg=CLR_WHITE, fg=CLR_MUTED, font=("Segoe UI", 11),
+            text="No PDF files found in Local Folder\n\nClick 'Scan Local Folder' to begin",
+            bg=CLR_CARD, fg=CLR_MUTED, font=("Segoe UI", 11),
             highlightbackground=CLR_BORDER, highlightthickness=1,
         )
+        # pre-pack hidden so it can be shown/hidden cleanly alongside the tree
+        self._empty_label.pack(fill="both", expand=True)
+        self._empty_label.pack_forget()
 
     def on_show(self):
         self._populate_from_db()
@@ -969,14 +1093,15 @@ class ScanFolderFrame(tk.Frame):
 
         if len(files) == 0:
             self._tree.pack_forget()
-            self._empty_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._empty_label.pack(fill="both", expand=True)
         else:
-            self._empty_label.place_forget()
+            self._empty_label.pack_forget()
             if not self._tree.winfo_ismapped():
                 self._tree.pack(side="left", fill="both", expand=True)
 
     def _scan(self):
-        self._scan_btn.config(state="disabled", text="  ⏳  Scanning…  ")
+        self._scan_btn.config(state="disabled", text="  ⏳  Scanning…  ",
+                              bg="#4A3FCC")
         self._status_var.set("Scanning Local Folder…")
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
@@ -1042,7 +1167,7 @@ class ScanFolderFrame(tk.Frame):
             self.after(0, lambda m=msg: self._status_var.set(m))
         finally:
             self.after(0, lambda: self._scan_btn.config(
-                state="normal", text="  🔍  Scan Local Folder  "
+                state="normal", text="  ⊞  Scan Local Folder  ", bg=CLR_ACCENT
             ))
 
 
@@ -1058,9 +1183,13 @@ class InsightsFrame(tk.Frame):
         self._filter = tk.StringVar(value="Month")
 
         hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="Extraction Insights", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        hdr.pack(fill="x", padx=28, pady=(24, 4))
+        title_col = tk.Frame(hdr, bg=CLR_BG)
+        title_col.pack(side="left")
+        tk.Label(title_col, text="Extraction Insights", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(title_col, text="Visualize extraction progress over time",
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
 
         filter_frame = tk.Frame(hdr, bg=CLR_BG)
         filter_frame.pack(side="right")
@@ -1073,20 +1202,22 @@ class InsightsFrame(tk.Frame):
                 cursor="hand2", command=self._refresh,
             ).pack(side="left", padx=4)
         tk.Button(
-            filter_frame, text="Refresh",
+            filter_frame, text="  ↻  Refresh  ",
             bg=CLR_ACCENT, fg=CLR_WHITE,
             font=FONT_SMALL, relief="flat", cursor="hand2",
+            padx=6, pady=4,
+            bd=0, activebackground=CLR_ACCENT_DARK, activeforeground=CLR_WHITE,
             command=self._refresh,
         ).pack(side="left", padx=(10, 0))
 
         self._cards_frame = tk.Frame(self, bg=CLR_BG)
-        self._cards_frame.pack(fill="x", padx=24, pady=(0, 10))
+        self._cards_frame.pack(fill="x", padx=28, pady=(8, 12))
 
         self._canvas = tk.Canvas(
-            self, bg=CLR_WHITE,
+            self, bg=CLR_CARD,
             highlightbackground=CLR_BORDER, highlightthickness=1,
         )
-        self._canvas.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        self._canvas.pack(fill="both", expand=True, padx=28, pady=(0, 24))
         self._canvas.bind("<Configure>", lambda e: self._draw_chart())
         self._chart_data: dict = {}
 
@@ -1120,17 +1251,21 @@ class InsightsFrame(tk.Frame):
         total     = len(files)
         completed = sum(1 for i in files.values() if i.get("status") == "Completed")
         pending   = total - completed
-        for label, val, colour in [
-            ("Total Files", total, CLR_ACCENT),
-            ("✅ Completed", completed, CLR_GREEN),
-            ("🕐 Pending",   pending,  CLR_PENDING),
-        ]:
-            card = tk.Frame(self._cards_frame, bg=colour, padx=20, pady=12)
-            card.pack(side="left", padx=6, ipadx=6)
-            tk.Label(card, text=str(val),  bg=colour, fg=CLR_WHITE,
-                     font=("Segoe UI", 18, "bold")).pack()
-            tk.Label(card, text=label,     bg=colour, fg=CLR_WHITE,
-                     font=FONT_SMALL).pack()
+        _STAT_CARDS = [
+            ("Total Files", total,     CLR_ACCENT,   "▣"),
+            ("Completed",   completed, CLR_GREEN_BG, "✓"),
+            ("Pending",     pending,   CLR_PENDING,  "⊙"),
+        ]
+        for label, val, colour, icon in _STAT_CARDS:
+            card = tk.Frame(self._cards_frame, bg=colour, padx=24, pady=14,
+                            highlightbackground=colour, highlightthickness=0)
+            card.pack(side="left", padx=6, ipadx=8)
+            tk.Label(card, text=str(val),
+                     bg=colour, fg=CLR_WHITE,
+                     font=("Segoe UI", 24, "bold")).pack()
+            tk.Label(card, text=label.upper(),
+                     bg=colour, fg="#E0E0E0",
+                     font=("Segoe UI", 7, "bold")).pack()
         self._draw_chart()
 
     def _draw_chart(self):
@@ -1138,43 +1273,55 @@ class InsightsFrame(tk.Frame):
         c.delete("all")
         if not self._chart_data:
             c.create_text(c.winfo_width()//2, c.winfo_height()//2,
-                          text="No data — scan folder first.", fill=CLR_MUTED, font=FONT_LABEL)
+                          text="No data — scan folder first.",
+                          fill=CLR_MUTED, font=("Segoe UI", 11))
             return
         W = c.winfo_width(); H = c.winfo_height()
         if W < 10 or H < 10: return
-        pad_l, pad_r, pad_t, pad_b = 60, 30, 30, 60
+        pad_l, pad_r, pad_t, pad_b = 64, 32, 36, 64
         keys    = list(self._chart_data.keys())
         n       = len(keys)
         chart_w = W - pad_l - pad_r
         chart_h = H - pad_t - pad_b
         max_v   = max((v["Pending"]+v["Completed"] for v in self._chart_data.values()), default=1) or 1
-        bar_w   = max(6, chart_w // (n*2+1))
+        bar_w   = max(8, chart_w // (n*2+1))
         gap     = bar_w // 2
-        c.create_line(pad_l, pad_t, pad_l, H-pad_b, fill=CLR_MUTED, width=1)
-        c.create_line(pad_l, H-pad_b, W-pad_r, H-pad_b, fill=CLR_MUTED, width=1)
+        # Axes
+        c.create_line(pad_l, pad_t, pad_l, H-pad_b, fill="#E4E7EF", width=1)
+        c.create_line(pad_l, H-pad_b, W-pad_r, H-pad_b, fill="#E4E7EF", width=1)
+        # Grid lines
         for i in range(5):
             y_val = max_v*i/4; y_px = H-pad_b-int(chart_h*i/4)
-            c.create_line(pad_l, y_px, W-pad_r, y_px, fill="#E5E7EB", dash=(2,4))
-            c.create_text(pad_l-6, y_px, text=str(int(y_val)), anchor="e", fill=CLR_MUTED, font=FONT_SMALL)
+            c.create_line(pad_l, y_px, W-pad_r, y_px, fill="#F1F3FA", dash=(3,5))
+            c.create_text(pad_l-8, y_px, text=str(int(y_val)),
+                          anchor="e", fill=CLR_MUTED, font=("Segoe UI", 8))
         slot = chart_w / n
+        _BAR_COLOURS = [CLR_GREEN_BG, CLR_PENDING]
         for idx, key in enumerate(keys):
             data   = self._chart_data[key]
             x_base = pad_l + int(idx*slot+slot/2) - bar_w - gap//2
-            for j, (status, colour) in enumerate([("Completed", CLR_GREEN), ("Pending", CLR_PENDING)]):
+            for j, (status, colour) in enumerate([("Completed", CLR_GREEN_BG), ("Pending", CLR_PENDING)]):
                 val = data[status]
                 bh  = int(chart_h*val/max_v) if max_v else 0
                 x0  = x_base + j*(bar_w+gap); y0 = H-pad_b-bh
                 x1  = x0+bar_w;               y1 = H-pad_b
-                c.create_rectangle(x0, y0, x1, y1, fill=colour, outline="", tags="bar")
-                if bh > 12:
-                    c.create_text((x0+x1)//2, y0+6, text=str(val), fill=CLR_WHITE, font=("Segoe UI",7,"bold"))
+                # Rounded-top bar effect (draw a filled rect + small rounded cap)
+                if bh > 0:
+                    cap = min(6, bh)
+                    c.create_rectangle(x0, y0+cap, x1, y1, fill=colour, outline="")
+                    c.create_oval(x0, y0, x1, y0+cap*2, fill=colour, outline="")
+                if bh > 14:
+                    c.create_text((x0+x1)//2, y0+8, text=str(val),
+                                  fill=CLR_WHITE, font=("Segoe UI", 7, "bold"))
             lbl = key if len(key)<=10 else key[-7:]
-            c.create_text(pad_l+int(idx*slot+slot/2), H-pad_b+14,
-                          text=lbl, fill=CLR_TEXT, font=FONT_SMALL)
-        for i, (label, colour) in enumerate([("Completed", CLR_GREEN), ("Pending", CLR_PENDING)]):
-            lx = W-160+i*80
-            c.create_rectangle(lx, pad_t, lx+12, pad_t+12, fill=colour, outline="")
-            c.create_text(lx+16, pad_t+6, text=label, anchor="w", fill=CLR_TEXT, font=FONT_SMALL)
+            c.create_text(pad_l+int(idx*slot+slot/2), H-pad_b+16,
+                          text=lbl, fill=CLR_MUTED, font=("Segoe UI", 8))
+        # Legend
+        for i, (label, colour) in enumerate([("Completed", CLR_GREEN_BG), ("Pending", CLR_PENDING)]):
+            lx = W-180+i*90
+            c.create_oval(lx, pad_t+2, lx+10, pad_t+12, fill=colour, outline="")
+            c.create_text(lx+14, pad_t+7, text=label,
+                          anchor="w", fill=CLR_TEXT, font=("Segoe UI", 8, "bold"))
 
 
 
@@ -1189,9 +1336,9 @@ class ViewExtractedFrame(tk.Frame):
     """
 
     _TYPES = [
-        ("📄  Word Documents",  "Word Extracts",      "#2E75B6"),
-        ("📊  Excel Workbooks", "CSV Extracts",       "#22863A"),
-        ("🗂  JSON Files",      "JSON File Extracts", "#7C5CD8"),
+        ("Word Documents",  "Word Extracts",      CLR_ACCENT,  "◉"),
+        ("Excel Workbooks", "CSV Extracts",       CLR_TEAL,    "▦"),
+        ("JSON Files",      "JSON File Extracts", CLR_ACCENT2, "{}"),
     ]
 
     def __init__(self, parent, app):
@@ -1200,23 +1347,29 @@ class ViewExtractedFrame(tk.Frame):
 
         # ── Header ────────────────────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="View Extracted Files", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        hdr.pack(fill="x", padx=28, pady=(24, 4))
+        title_col = tk.Frame(hdr, bg=CLR_BG)
+        title_col.pack(side="left")
+        tk.Label(title_col, text="View Extracted Files", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(title_col, text="Browse extracted Word, Excel and JSON output files",
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
         tk.Button(
-            hdr, text="  🔄  Refresh  ",
+            hdr, text="  ↻  Refresh  ",
             bg=CLR_ACCENT, fg=CLR_WHITE,
             font=FONT_SMALL, relief="flat", cursor="hand2",
-            padx=8, pady=4, command=self.on_show,
+            padx=10, pady=6, bd=0,
+            activebackground=CLR_ACCENT_DARK, activeforeground=CLR_WHITE,
+            command=self.on_show,
         ).pack(side="right")
 
         self._status_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._status_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=28)
 
         # ── Scrollable body ───────────────────────────────────────────────────
         outer = tk.Frame(self, bg=CLR_BG)
-        outer.pack(fill="both", expand=True, padx=24, pady=(8, 20))
+        outer.pack(fill="both", expand=True, padx=28, pady=(8, 24))
 
         canvas  = tk.Canvas(outer, bg=CLR_BG, highlightthickness=0)
         scrollb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
@@ -1246,7 +1399,7 @@ class ViewExtractedFrame(tk.Frame):
         extracted_root = _extracted_folder()
         total = 0
 
-        for section_label, subfolder_name, colour in self._TYPES:
+        for section_label, subfolder_name, colour, icon in self._TYPES:
             base = extracted_root / subfolder_name
             # Collect files recursively, sorted by modification time (newest first)
             files = sorted(base.rglob("*.*"), key=lambda p: p.stat().st_mtime, reverse=True) \
@@ -1258,13 +1411,36 @@ class ViewExtractedFrame(tk.Frame):
             files = [f for f in files if f.suffix.lower() == ext]
             total += len(files)
 
-            # ── Section header ────────────────────────────────────────────────
-            sec_hdr = tk.Frame(self._body, bg=colour)
-            sec_hdr.pack(fill="x", pady=(10, 0))
-            tk.Label(
-                sec_hdr, text=f"  {section_label}  ({len(files)} file{'s' if len(files)!=1 else ''})",
-                bg=colour, fg=CLR_WHITE, font=FONT_BOLD, anchor="w", padx=4, pady=6,
-            ).pack(side="left")
+            # ── Section header — pill-style ───────────────────────────────────
+            hdr_row = tk.Frame(self._body, bg=CLR_BG)
+            hdr_row.pack(fill="x", pady=(18, 4))
+
+            # Icon badge
+            badge = tk.Frame(hdr_row, bg=_hex_alpha(colour, 0.12),
+                             highlightbackground=_hex_alpha(colour, 0.25),
+                             highlightthickness=1, width=26, height=26)
+            badge.pack(side="left", padx=(0, 8))
+            badge.pack_propagate(False)
+            tk.Label(badge, text=icon, bg=_hex_alpha(colour, 0.12),
+                     fg=colour, font=("Segoe UI", 11)).place(relx=.5, rely=.5, anchor="center")
+
+            # Section title
+            tk.Label(hdr_row, text=section_label,
+                     bg=CLR_BG, fg=CLR_TEXT, font=FONT_BOLD).pack(side="left")
+
+            # Count pill
+            count_bg = _hex_alpha(colour, 0.12)
+            count_pill = tk.Frame(hdr_row, bg=count_bg,
+                                  highlightbackground=_hex_alpha(colour, 0.25),
+                                  highlightthickness=1)
+            count_pill.pack(side="left", padx=(10, 0))
+            tk.Label(count_pill,
+                     text=f"  {len(files)} file{'s' if len(files)!=1 else ''}  ",
+                     bg=count_bg, fg=colour, font=("Segoe UI", 8, "bold")).pack()
+
+            # Divider line
+            tk.Frame(hdr_row, bg=CLR_BORDER, height=1).pack(
+                side="left", fill="x", expand=True, padx=(12, 0))
 
             # ── File list ─────────────────────────────────────────────────────
             list_frame = tk.Frame(self._body, bg=CLR_WHITE,
@@ -1348,33 +1524,39 @@ class ExtractFrame(tk.Frame):
 
         # ── Header ────────────────────────────────────────────────────────────
         hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="Extract Files", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
+        hdr.pack(fill="x", padx=28, pady=(24, 4))
+        title_col = tk.Frame(hdr, bg=CLR_BG)
+        title_col.pack(side="left")
+        tk.Label(title_col, text="Extract Files", bg=CLR_BG,
+                 fg=CLR_TEXT, font=FONT_TITLE).pack(anchor="w")
+        tk.Label(title_col, text="Run extraction pipeline and upload outputs to Box",
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
         self._btn = tk.Button(
             hdr,
             text="  ▶  Start Extraction  ",
-            bg=CLR_GREEN, fg=CLR_WHITE,
+            bg=CLR_GREEN_BG, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat",
-            cursor="hand2", padx=8, pady=6,
+            cursor="hand2", padx=12, pady=8,
+            bd=0, activebackground="#15803D", activeforeground=CLR_WHITE,
             command=self._start_extraction,
         )
         self._btn.pack(side="right")
 
         # ── Progress bar ──────────────────────────────────────────────────────
         self._progress = ttk.Progressbar(self, orient="horizontal", mode="indeterminate")
-        self._progress.pack(fill="x", padx=24, pady=(0, 6))
+        self._progress.pack(fill="x", padx=28, pady=(6, 4))
 
         # ── Status label ──────────────────────────────────────────────────────
         self._status_var = tk.StringVar(value="Ready.")
         tk.Label(self, textvariable=self._status_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24)
+                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=28)
 
         # ── Scrollable results panel ──────────────────────────────────────────
-        tk.Label(self, text="Results", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_BOLD).pack(anchor="w", padx=24, pady=(20, 4))
+        tk.Label(self, text="RESULTS", bg=CLR_BG,
+                 fg=CLR_MUTED, font=("Segoe UI", 8, "bold")).pack(
+                     anchor="w", padx=28, pady=(18, 3))
         container = tk.Frame(self, bg=CLR_BG)
-        container.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        container.pack(fill="both", expand=True, padx=28, pady=(0, 24))
 
         self._canvas = tk.Canvas(container, bg=CLR_BG, highlightthickness=0)
         sb = ttk.Scrollbar(container, orient="vertical", command=self._canvas.yview)
@@ -1399,53 +1581,59 @@ class ExtractFrame(tk.Frame):
         pass   # silent stub — logs go to disk
 
     def _add_result_card(self, fname, ref, status, word, excel, json_, upload_status=""):
-        ok     = (status == "ok")
-        colour = CLR_GREEN if ok else CLR_ORANGE
+        ok        = (status == "ok")
+        colour    = CLR_GREEN_BG if ok else CLR_ORANGE
+        bar_colour = CLR_GREEN_BG if ok else "#F43F5E"
         card = tk.Frame(
-            self._results_frame, bg=CLR_WHITE,
+            self._results_frame, bg=CLR_CARD,
             highlightbackground=CLR_BORDER, highlightthickness=1,
         )
-        card.pack(fill="x", pady=4, ipady=8, ipadx=10)
-        top = tk.Frame(card, bg=CLR_WHITE)
-        top.pack(fill="x", padx=10, pady=(6, 2))
-        tk.Label(top, text=fname, bg=CLR_WHITE, fg=CLR_TEXT,
+        card.pack(fill="x", pady=4, ipady=6, ipadx=0)
+        # Left accent bar
+        tk.Frame(card, bg=bar_colour, width=5).pack(side="left", fill="y")
+        body = tk.Frame(card, bg=CLR_CARD)
+        body.pack(side="left", fill="x", expand=True, padx=10, pady=6)
+        top = tk.Frame(body, bg=CLR_CARD)
+        top.pack(fill="x", pady=(0, 2))
+        tk.Label(top, text=fname, bg=CLR_CARD, fg=CLR_TEXT,
                  font=FONT_BOLD, anchor="w").pack(side="left")
-        badge_text = "✅  Completed" if ok else "❌  Failed"
+        badge_text = "  Completed  " if ok else "  Failed  "
         tk.Label(top, text=badge_text, bg=colour, fg=CLR_WHITE,
-                 font=FONT_SMALL, padx=8, pady=2).pack(side="right")
+                 font=("Segoe UI", 8, "bold"),
+                 padx=2, pady=2).pack(side="right")
         if ok:
-            tk.Label(card, text=f"Reference:  {ref}", bg=CLR_WHITE,
+            tk.Label(body, text=f"Reference:  {ref}", bg=CLR_CARD,
                      fg=CLR_MUTED, font=FONT_SMALL, anchor="w").pack(
-                         fill="x", padx=10, pady=(0, 2))
+                         fill="x", pady=(0, 2))
             for icon, path in [
-                ("📄 Word",  word),
-                ("📊 Excel", excel),
-                ("🗂 JSON",  json_),
+                ("◈ Word",  word),
+                ("▣ Excel", excel),
+                ("◇ JSON",  json_),
             ]:
                 tk.Label(
-                    card, text=f"{icon}:  {path}",
-                    bg=CLR_WHITE, fg=CLR_MUTED, font=FONT_SMALL,
+                    body, text=f"{icon}:  {path}",
+                    bg=CLR_CARD, fg=CLR_MUTED, font=FONT_SMALL,
                     anchor="w", wraplength=700, justify="left",
-                ).pack(fill="x", padx=10)
+                ).pack(fill="x")
             if upload_status:
                 tk.Label(
-                    card, text=f"☁️ Box Upload: {upload_status}",
-                    bg=CLR_WHITE, fg=CLR_MUTED, font=FONT_SMALL,
+                    body, text=f"☁ Box Upload: {upload_status}",
+                    bg=CLR_CARD, fg=CLR_MUTED, font=FONT_SMALL,
                     anchor="w",
-                ).pack(fill="x", padx=10)
+                ).pack(fill="x")
         else:
             tk.Label(
-                card, text=ref,
-                bg=CLR_WHITE, fg="#C0392B",
+                body, text=ref,
+                bg=CLR_CARD, fg="#E11D48",
                 font=FONT_SMALL, anchor="w",
                 wraplength=700, justify="left",
-            ).pack(fill="x", padx=10, pady=(0, 4))
+            ).pack(fill="x", pady=(0, 4))
 
     def _start_extraction(self):
         if self._running:
             return
         self._running = True
-        self._btn.config(state="disabled", text="  ⏳  Extracting…  ")
+        self._btn.config(state="disabled", text="  ⏳  Extracting…  ", bg="#15803D")
         self._progress.start(12)
         for w in self._results_frame.winfo_children():
             w.destroy()
@@ -1462,7 +1650,7 @@ class ExtractFrame(tk.Frame):
 
     def _extraction_done(self):
         self._progress.stop()
-        self._btn.config(state="normal", text="  ▶  Start Extraction  ")
+        self._btn.config(state="normal", text="  ▶  Start Extraction  ", bg=CLR_GREEN_BG)
 
     def _do_extraction(self):
         """
@@ -2835,73 +3023,118 @@ class ChatFrame(tk.Frame):
         self._history: list[dict] = []
         self._busy    = False
 
-        hdr = tk.Frame(self, bg=CLR_BG)
-        hdr.pack(fill="x", padx=24, pady=(20, 8))
-        tk.Label(hdr, text="AI Assistant", bg=CLR_BG,
-                 fg=CLR_TEXT, font=FONT_TITLE).pack(side="left")
-        tk.Button(
-            hdr, text="🗑  Clear Chat",
-            bg=CLR_ACCENT, fg=CLR_WHITE,
-            font=FONT_SMALL, relief="flat", cursor="hand2",
-            padx=8, pady=4, command=self._clear_chat,
-        ).pack(side="right")
-        self._model_var = tk.StringVar(value="Model: —")
-        tk.Label(hdr, textvariable=self._model_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(side="right", padx=12)
+        # ── Chat header ───────────────────────────────────────────────────────
+        hdr = tk.Frame(self, bg=CLR_CARD,
+                       highlightbackground=CLR_BORDER, highlightthickness=1)
+        hdr.pack(fill="x")
+        hdr_inner = tk.Frame(hdr, bg=CLR_CARD)
+        hdr_inner.pack(fill="x", padx=24, pady=14)
 
-        chat_rf = RoundedFrame(self, radius=12, bg_fill=CLR_CARD,
+        # Avatar pill
+        av_pill = tk.Frame(hdr_inner, bg=CLR_ACCENT, width=42, height=42)
+        av_pill.pack(side="left")
+        av_pill.pack_propagate(False)
+        tk.Label(av_pill, text="◇", bg=CLR_ACCENT, fg=CLR_WHITE,
+                 font=("Segoe UI", 16, "bold")).place(relx=.5, rely=.5, anchor="center")
+        # Online indicator
+        av_dot = tk.Frame(av_pill, bg=CLR_GREEN_BG, width=12, height=12)
+        av_dot.place(relx=1.0, rely=1.0, anchor="se")
+
+        title_group = tk.Frame(hdr_inner, bg=CLR_CARD)
+        title_group.pack(side="left", padx=(12, 0))
+        tk.Label(title_group, text="Detective Conan",
+                 bg=CLR_CARD, fg=CLR_TEXT,
+                 font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        tk.Label(title_group, text="IBM WatsonX AI Assistant · V2",
+                 bg=CLR_CARD, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w")
+
+        hdr_right = tk.Frame(hdr_inner, bg=CLR_CARD)
+        hdr_right.pack(side="right")
+        self._model_var = tk.StringVar(value="Model: —")
+        model_lbl = tk.Label(hdr_right, textvariable=self._model_var,
+                 bg="#EDE9FF", fg=CLR_ACCENT,
+                 font=("Segoe UI", 8, "bold"),
+                 padx=8, pady=3)
+        model_lbl.pack(side="left", padx=(0, 10))
+        tk.Button(
+            hdr_right, text="  ✕  Clear  ",
+            bg=CLR_BG, fg=CLR_MUTED,
+            font=("Segoe UI", 9), relief="flat", cursor="hand2",
+            padx=6, pady=4, bd=0,
+            activebackground=CLR_BORDER, activeforeground=CLR_TEXT,
+            command=self._clear_chat,
+        ).pack(side="left")
+
+        # ── Chat display (dark terminal-like bg) ──────────────────────────────
+        chat_rf = RoundedFrame(self, radius=12, bg_fill="#F8F9FF",
                                border_color=CLR_BORDER, border_width=1)
-        chat_rf.pack(fill="both", expand=True, padx=24, pady=(0, 8))
+        chat_rf.pack(fill="both", expand=True, padx=24, pady=(12, 8))
         chat_inner = chat_rf.inner
         self._chat_display = tk.Text(
-            chat_inner, bg=CLR_CARD, fg=CLR_TEXT,
+            chat_inner, bg="#F8F9FF", fg=CLR_TEXT,
             font=("Segoe UI", 10), relief="flat", wrap="word",
             state="disabled", highlightthickness=0, bd=0,
-            padx=12, pady=10, cursor="arrow",
+            padx=16, pady=12, cursor="arrow",
         )
         chat_sb = ttk.Scrollbar(chat_inner, orient="vertical",
                                 command=self._chat_display.yview)
         self._chat_display.configure(yscrollcommand=chat_sb.set)
         self._chat_display.pack(side="left", fill="both", expand=True)
         chat_sb.pack(side="right", fill="y")
-        self._chat_display.tag_configure("user",       foreground=CLR_ACCENT,  font=("Segoe UI",10,"bold"))
-        self._chat_display.tag_configure("assistant",  foreground=CLR_GREEN,   font=("Segoe UI",10))
-        self._chat_display.tag_configure("asst_bold",  foreground=CLR_GREEN,   font=("Segoe UI",10,"bold"))
-        self._chat_display.tag_configure("asst_italic",foreground=CLR_GREEN,   font=("Segoe UI",10,"italic"))
-        self._chat_display.tag_configure("asst_hr",    foreground=CLR_BORDER,  font=("Segoe UI",9))
-        self._chat_display.tag_configure("system",     foreground=CLR_MUTED,  font=("Segoe UI",9,"italic"))
-        self._chat_display.tag_configure("error",      foreground=CLR_ORANGE, font=("Segoe UI",9,"italic"))
+        # Chat text tags — refined colours
+        self._chat_display.tag_configure("user",
+            foreground=CLR_ACCENT, font=("Segoe UI", 10, "bold"))
+        self._chat_display.tag_configure("assistant",
+            foreground="#16A34A", font=("Segoe UI", 10))
+        self._chat_display.tag_configure("asst_bold",
+            foreground="#16A34A", font=("Segoe UI", 10, "bold"))
+        self._chat_display.tag_configure("asst_italic",
+            foreground="#16A34A", font=("Segoe UI", 10, "italic"))
+        self._chat_display.tag_configure("asst_hr",
+            foreground=CLR_BORDER, font=("Segoe UI", 9))
+        self._chat_display.tag_configure("system",
+            foreground="#7C5CD8", font=("Segoe UI", 9, "italic"))
+        self._chat_display.tag_configure("error",
+            foreground="#E11D48", font=("Segoe UI", 9, "italic"))
 
-        input_row = tk.Frame(self, bg=CLR_BG)
-        input_row.pack(fill="x", padx=24, pady=(0, 16))
-        # Rounded input box
-        input_rf = RoundedFrame(input_row, radius=10, bg_fill=CLR_CARD,
+        # ── Input bar ─────────────────────────────────────────────────────────
+        input_bar = tk.Frame(self, bg=CLR_CARD,
+                             highlightbackground=CLR_BORDER, highlightthickness=1)
+        input_bar.pack(fill="x")
+        input_row = tk.Frame(input_bar, bg=CLR_CARD)
+        input_row.pack(fill="x", padx=20, pady=14)
+
+        input_rf = RoundedFrame(input_row, radius=10, bg_fill="#F0F2F8",
                                 border_color=CLR_BORDER, border_width=1,
-                                height=40)
-        input_rf.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=0)
+                                height=44)
+        input_rf.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=0)
         self._input_var = tk.StringVar()
         self._input_box = tk.Entry(
             input_rf.inner, textvariable=self._input_var,
             font=("Segoe UI", 10), relief="flat",
-            bg=CLR_CARD, fg=CLR_TEXT,
+            bg="#F0F2F8", fg=CLR_TEXT,
             highlightthickness=0, bd=0,
         )
-        self._input_box.pack(fill="both", expand=True, padx=8, pady=0, ipady=7)
+        self._input_box.pack(fill="both", expand=True, padx=12, pady=0, ipady=9)
         self._input_box.bind("<Return>", lambda e: self._send())
-        # Focus highlight on input border
-        self._input_box.bind("<FocusIn>",  lambda e: input_rf.set_border_color(CLR_ACCENT))
-        self._input_box.bind("<FocusOut>", lambda e: input_rf.set_border_color(CLR_BORDER))
+        self._input_box.bind("<FocusIn>",
+            lambda e: input_rf.set_border_color(CLR_ACCENT))
+        self._input_box.bind("<FocusOut>",
+            lambda e: input_rf.set_border_color(CLR_BORDER))
+
         self._send_btn = tk.Button(
-            input_row, text="  Send  ",
-            bg=CLR_GREEN, fg=CLR_WHITE,
+            input_row, text="  ▶  Send  ",
+            bg=CLR_ACCENT, fg=CLR_WHITE,
             font=FONT_BOLD, relief="flat", cursor="hand2",
-            padx=12, pady=8, command=self._send,
-            bd=0, activebackground="#177A40", activeforeground=CLR_WHITE,
+            padx=14, pady=10, command=self._send,
+            bd=0, activebackground=CLR_ACCENT_DARK, activeforeground=CLR_WHITE,
         )
         self._send_btn.pack(side="right")
+
         self._typing_var = tk.StringVar(value="")
         tk.Label(self, textvariable=self._typing_var,
-                 bg=CLR_BG, fg=CLR_MUTED, font=FONT_SMALL).pack(anchor="w", padx=24, pady=(0,4))
+                 bg=CLR_BG, fg=CLR_ACCENT2,
+                 font=("Segoe UI", 9, "italic")).pack(anchor="w", padx=26, pady=(0, 6))
 
     def on_show(self):
         if not self._history:
