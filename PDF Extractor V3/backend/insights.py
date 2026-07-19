@@ -1,13 +1,15 @@
 """
 insights.py — Extraction analytics for PDF Extractor V3.
 Ported from InsightsFrame and get_log_history (pdf_extractor_ui_v2.py lines 1177–1324, 2048–2082).
+
+Logs and tracking are read from the SQLite database (see db.py) — the single
+source of truth. No filesystem log scanning.
 """
 from collections import defaultdict
 from datetime import datetime, timedelta
-from pathlib import Path
 from fastapi import APIRouter
-from config import _log_history_dir
 from tracking import load_tracking
+import db
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -21,42 +23,27 @@ def get_log_history(period: str = "day") -> str:
         "year":  today.replace(month=1, day=1),
     }.get(period.lower(), today)
 
-    if not LOG_HISTORY_DIR.exists():
-        return "No log history found."
-
-    log_files = []
-    for log_path in LOG_HISTORY_DIR.rglob("*.log"):
-        parts    = log_path.parts
-        date_str = parts[-2] if len(parts) >= 2 else ""
-        try:
-            log_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except Exception:
-            log_date = today
-        if log_date >= cutoff:
-            log_files.append((log_date, log_path))
-
-    if not log_files:
+    entries = db.logs_since(cutoff)  # newest first
+    if not entries:
         return f"No log entries found for the selected period ({period})."
 
-    log_files.sort(key=lambda x: x[0], reverse=True)
-    lines = [f"=== LOG HISTORY ({period.upper()}) — {len(log_files)} file(s) ==="]
-    for log_date, log_path in log_files:
-        lines.append(f"\n[{log_date}]  {log_path.name}")
-        try:
-            content_lines = log_path.read_text(encoding="utf-8").splitlines()
-            lines.append("\n".join(f"  {ln}" for ln in content_lines[:10]))
-            if len(content_lines) > 10:
-                lines.append(f"  … ({len(content_lines) - 10} more lines)")
-        except Exception:
-            lines.append("  (could not read log file)")
+    lines = [f"=== LOG HISTORY ({period.upper()}) — {len(entries)} entr(y/ies) ==="]
+    for entry in entries:
+        when = entry["occurred_at"]
+        ref  = entry.get("ref_number") or "UNKNOWN_REF"
+        lines.append(f"\n[{when.strftime('%Y-%m-%d %H:%M:%S')}]  {ref}")
+        content_lines = (entry.get("content") or "").splitlines()
+        lines.append("\n".join(f"  {ln}" for ln in content_lines[:10]))
+        if len(content_lines) > 10:
+            lines.append(f"  … ({len(content_lines) - 10} more lines)")
     lines.append("\n=== END LOG HISTORY ===")
     return "\n".join(lines)
 
 
 def _build_chart_data(period: str) -> list[dict]:
-    """Build bar chart data buckets from tracking_db.json."""
-    db        = load_tracking()
-    files     = db.get("files", {})
+    """Build bar chart data buckets from the tracking database."""
+    tracking  = load_tracking()
+    files     = tracking.get("files", {})
     today     = datetime.now().date()
     buckets: dict[str, dict] = defaultdict(lambda: {"completed": 0, "pending": 0})
 
@@ -91,8 +78,8 @@ def _build_chart_data(period: str) -> list[dict]:
 @router.get("")
 def insights(period: str = "month"):
     """Return stat cards + chart data for the given period."""
-    db        = load_tracking()
-    files     = db.get("files", {})
+    tracking  = load_tracking()
+    files     = tracking.get("files", {})
     total     = len(files)
     completed = sum(1 for f in files.values() if f.get("status") == "Completed")
     pending   = total - completed

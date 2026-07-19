@@ -1,18 +1,25 @@
 """
 config.py — Config and path helpers for PDF Extractor V3 backend.
 
-In development: config.json lives next to main.py (backend/).
-In a packaged Electron build: config.json lives in the user's data dir
-  (%APPDATA%/PDF Extractor V3/) — passed in via --data-dir CLI arg from main.js.
+Persistence is now SQLite (see db.py) — the database is the single source of
+truth for config, tracking, JWT config, and extraction logs. The public function
+signatures below (read_config, write_config, load_tracking wrappers, etc.) are
+preserved as thin wrappers over db.py so existing call sites work unchanged.
+
+Path resolution:
+  In development: the SQLite DB lives next to main.py (backend/).
+  In a packaged Electron build: it lives in the user's data dir
+    (%APPDATA%/PDF Extractor V3/) — passed in via --data-dir CLI arg from main.js.
 """
 import json
-import os
 from pathlib import Path
+
+import db
 
 # BASE_DIR = directory containing this file (backend/ or PyInstaller _MEIPASS)
 BASE_DIR = Path(__file__).parent.resolve()
 
-# DATA_DIR: where config.json + tracking_db.json live.
+# DATA_DIR: where the SQLite DB lives.
 # Overridden by --data-dir argument in main.py's argparse;
 # defaults to BASE_DIR so development works without any extra args.
 _DATA_DIR: Path | None = None
@@ -33,59 +40,42 @@ def _data_dir() -> Path:
     return BASE_DIR
 
 
-def _config_path() -> Path:
-    return _data_dir() / "config.json"
-
-
-def _tracking_path() -> Path:
-    return _data_dir() / "tracking_db.json"
-
-
 def _log_history_dir() -> Path:
     return _data_dir() / LOG_HISTORY_DIR_REL
 
 
 # Expose these as module-level names so other modules can import them directly
 # (they are properties — re-evaluated each call)
-def CONFIG_PATH() -> Path:   return _config_path()
-def TRACKING_PATH() -> Path: return _tracking_path()
 def LOG_HISTORY_DIR() -> Path: return _log_history_dir()
 
 
 def read_config() -> dict:
-    p = _config_path()
-    if not p.exists():
-        # Fallback: try BASE_DIR (useful in development)
-        fallback = BASE_DIR / "config.json"
-        if fallback.exists():
-            p = fallback
-        else:
-            raise FileNotFoundError(
-                f"config.json not found at {p}\n"
-                "Copy config.json from the backend/ template directory and fill in your credentials."
-            )
-    with open(p, "r", encoding="utf-8-sig") as f:
-        return json.load(f)
+    """Return the full config dict from the database.
+
+    Raises FileNotFoundError when no config has been saved yet, mirroring the
+    legacy behaviour so callers that expect configuration to exist still fail
+    loudly."""
+    if not db.config_exists():
+        raise FileNotFoundError(
+            "No configuration found in the database.\n"
+            "Open the Settings page and save your credentials to create it."
+        )
+    return db.config_get_all()
 
 
-def write_config(cfg: dict) -> Path:
-    """Atomically write the full config dict to config.json in the data dir."""
-    p = _config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
-    os.replace(tmp, p)
-    return p
+def write_config(cfg: dict) -> str:
+    """Persist the full config dict to the database. Returns the DB path (str)
+    for backward-compat with callers that logged the returned path."""
+    db.config_replace_all(cfg)
+    return str(db._db_path())
 
 
 def read_config_safe() -> dict:
-    """Like read_config() but returns an empty template instead of raising
-    when config.json does not exist yet (used by the Settings page)."""
-    try:
-        return read_config()
-    except FileNotFoundError:
+    """Like read_config() but returns a full default template merged with any
+    stored values instead of raising when nothing is stored yet (Settings page)."""
+    if not db.config_exists():
         return default_config()
+    return db.config_get_all()
 
 
 def default_config() -> dict:
@@ -125,25 +115,20 @@ def default_config() -> dict:
     }
 
 
-def jwt_config_path() -> Path:
-    """Path where the Box JWT config JSON should be saved (next to config.json)."""
-    cfg = read_config_safe()
-    fname = cfg.get("box", {}).get("jwt_config_file", "box_jwt_config.json")
-    return _data_dir() / fname
-
-
-def write_jwt_config(raw_json: str) -> Path:
-    """Validate + save the Box JWT config JSON to the data dir."""
+def write_jwt_config(raw_json: str) -> str:
+    """Validate + save the Box JWT config JSON to the database.
+    Returns a descriptive location string for backward-compat."""
     parsed = json.loads(raw_json)  # raises json.JSONDecodeError if invalid
-    p = jwt_config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(parsed, f, indent=2, ensure_ascii=False)
-    return p
+    db.jwt_config_set(parsed)
+    return f"{db._db_path()} (jwt_config)"
+
+
+def jwt_config_exists() -> bool:
+    """Whether a Box JWT config has been stored in the database."""
+    return db.jwt_config_exists()
 
 
 def local_folder() -> Path:
-
     cfg = read_config()
     rel = cfg.get("local", {}).get("local_folder", "Local Folder")
     path = Path(rel) if Path(rel).is_absolute() else _data_dir() / rel

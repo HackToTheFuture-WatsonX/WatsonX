@@ -4,9 +4,15 @@ Ported from pdf_extractor_ui_v2.py (lines 246–464).
 """
 from pathlib import Path
 from config import BASE_DIR, read_config
+import db
 
 
 def _resolve_jwt_path(box_cfg: dict) -> Path:
+    """Legacy on-disk fallback lookup for a Box JWT config file.
+
+    Only used when no JWT config is stored in the database (e.g. an older
+    install). New installs store the JWT JSON in SQLite via db.jwt_config_set().
+    """
     jwt_filename = box_cfg.get("jwt_config_file", "box_jwt_config.json")
     candidates = [
         BASE_DIR / jwt_filename,
@@ -18,20 +24,31 @@ def _resolve_jwt_path(box_cfg: dict) -> Path:
         raise FileNotFoundError(
             f"Box JWT config file '{jwt_filename}' not found.\n"
             f"Looked in: {[str(p.resolve()) for p in candidates]}\n"
-            "Download it from app.box.com/developers/console → your app → Configuration → "
-            "App Settings → Generate a Public/Private Keypair, then save next to config.json."
+            "Upload it on the Settings page (it is stored in the database), or "
+            "download it from app.box.com/developers/console → your app → Configuration → "
+            "App Settings → Generate a Public/Private Keypair."
         )
     return jwt_path
 
 
 def get_box_client():
-    """Build a Box JWT client from config.json. Returns (client, cfg)."""
+    """Build a Box JWT client. Returns (client, cfg).
+
+    The JWT service-account JSON is loaded from the database (single source of
+    truth). Falls back to the legacy on-disk file lookup for older installs.
+    """
     from boxsdk import JWTAuth, Client
-    cfg      = read_config()
-    box      = cfg["box"]
-    jwt_path = _resolve_jwt_path(box)
-    auth     = JWTAuth.from_settings_file(str(jwt_path))
+    cfg = read_config()
+    box = cfg["box"]
+
+    jwt_dict = db.jwt_config_get()
+    if jwt_dict:
+        auth = JWTAuth.from_settings_dictionary(jwt_dict)
+    else:
+        jwt_path = _resolve_jwt_path(box)
+        auth     = JWTAuth.from_settings_file(str(jwt_path))
     return Client(auth), cfg
+
 
 
 def _box_get_or_create_subfolder(client, parent_folder_id: str, name: str) -> str:

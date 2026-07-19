@@ -48,22 +48,13 @@ def build_extract_folder(base_dir: Path, when: datetime) -> Path:
     return folder
 
 
-def write_extraction_log(ref_number: str, when: datetime, content: str) -> Path:
-    import re as _re
-    from config import _log_history_dir
-    week_num   = when.isocalendar()[1]
-    day_folder = (
-        _log_history_dir()
-        / str(when.year)
-        / when.strftime("%b_%Y")
-        / f"Week_{week_num:02d}"
-        / when.strftime("%Y-%m-%d")
-    )
-    day_folder.mkdir(parents=True, exist_ok=True)
-    safe_ref  = _re.sub(r'[<>:"/\\|?*]', "_", ref_number).strip() or "UNKNOWN_REF"
-    log_path  = day_folder / f"{safe_ref}_{when.strftime('%Y%m%d_%H%M%S')}.log"
-    log_path.write_text(content, encoding="utf-8")
-    return log_path
+def write_extraction_log(ref_number: str, when: datetime, content: str) -> int:
+    """Persist an extraction log entry to the database (single source of truth).
+    Returns the new log row id."""
+    import db
+    safe_ref = (ref_number or "").strip() or "UNKNOWN_REF"
+    return db.log_add(safe_ref, when, content)
+
 
 
 def _load_extractor():

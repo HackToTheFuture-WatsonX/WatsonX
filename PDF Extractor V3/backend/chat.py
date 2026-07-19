@@ -289,7 +289,122 @@ def _skill_open_report(subject_query: str, file_type: str) -> str:
     return f"✅ Opening **{p.name}** for **{m['subject']}** (Ref: {m['ref']})."
 
 
+# ── ICA transport helpers ─────────────────────────────────────────────────────
+#
+# CRITICAL: Posting a PROMPT entry alone does NOT trigger model inference — the
+# chat just accumulates PROMPT entries and no ANSWER ever appears (which is why
+# the old "post prompt then poll GET /entries for an ANSWER" logic always timed
+# out). The real inference trigger is a SECOND POST of an (empty) ANSWER entry
+# that references the prompt's _id INSIDE content.promptEntryId. That request
+# returns HTTP 201 with Content-Type: text/event-stream carrying the streamed
+# answer as chunks literally prefixed with "answer: ".
+
+
+def _ica_headers(cookie: str, team_id: str, team_name: str, chat_id: str,
+                 *, accept: str = "application/json, text/plain, */*") -> dict:
+    # ICA's gateway (Akamai) rejects raw spaces in header VALUES with HTTP 501.
+    # The real browser sends teamid/teamname URL-encoded, so encode them here.
+    return {
+        "cookie": cookie,
+        "teamid": _urlparse.quote(team_id, safe=""),
+        "teamname": _urlparse.quote(team_name, safe=""),
+        "Content-Type": "application/json",
+        "Accept": accept,
+        "Origin": "https://servicesessentials.ibm.com",
+        "Referer": f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty",
+    }
+
+
+def _parse_ica_sse(raw_body: str) -> str:
+    """Parse an ICA text/event-stream answer body into plain text.
+
+    The stream is a series of chunks literally prefixed with "answer: ". Most
+    chunks are empty; the actual content is what remains after stripping every
+    "answer: " prefix. e.g. 'answer: answer: OKanswer: ' → 'OK'.
+    """
+    if not raw_body:
+        return ""
+    return raw_body.replace("answer: ", "").strip()
+
+
+def _ica_send_and_stream(where: str, *, cookie, team_id, team_name, chat_id,
+                         base_url, prompt: str, timeout: int = 120) -> str:
+    """Post a PROMPT then trigger + read the streamed ANSWER. Returns the reply.
+
+    Raises RuntimeError on any transport/HTTP failure.
+    """
+    import urllib.request, urllib.error
+
+    entries_url = f"{base_url}/chats/{chat_id}/entries"
+    _log_ica_request_context(where, cookie=cookie, team_id=team_id,
+                             team_name=team_name, chat_id=chat_id,
+                             base_url=base_url, url=entries_url)
+
+    # ── Step 1: POST the PROMPT entry ──────────────────────────────────────
+    prompt_payload = json.dumps({
+        "chatId": chat_id, "type": "PROMPT",
+        "content": {
+            "prompt": prompt, "promptId": "", "promptUuid": "",
+            "isIncludedInContext": True,
+            "sensitiveInformation": {"hasSensitiveInformation": False},
+        },
+    }).encode("utf-8")
+    headers = _ica_headers(cookie, team_id, team_name, chat_id)
+    log.info("[%s] POST prompt (%d chars) → %s", where, len(prompt or ""), entries_url)
+    req = urllib.request.Request(entries_url, data=prompt_payload,
+                                 headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            echo = json.loads(resp.read().decode("utf-8"))
+        prompt_id = echo.get("_id", "") if isinstance(echo, dict) else ""
+        log.info("[%s] prompt accepted (HTTP %s), _id=%s", where,
+                 getattr(resp, "status", "?"), prompt_id)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:500]
+        log.error("[%s] prompt POST failed HTTP %s: %s", where, e.code, body)
+        raise RuntimeError(f"ICA {e.code}: {body}")
+    except Exception as exc:  # noqa: BLE001
+        log.error("[%s] prompt POST could not reach ICA: %s", where, exc)
+        raise RuntimeError(f"ICA unreachable: {exc}")
+
+    if not prompt_id:
+        raise RuntimeError("ICA did not return a prompt entry id")
+
+    # ── Step 2: POST the ANSWER trigger and read the SSE stream ────────────
+    # promptEntryId MUST live inside content — at top level ICA replies with a
+    # NOTIFICATION entry titled "No prompt entry found".
+    answer_payload = json.dumps({
+        "chatId": chat_id, "type": "ANSWER",
+        "content": {"answer": "", "promptEntryId": prompt_id},
+    }).encode("utf-8")
+    sse_headers = _ica_headers(cookie, team_id, team_name, chat_id,
+                               accept="text/event-stream")
+    log.info("[%s] POST answer trigger (promptEntryId=%s) → %s",
+             where, prompt_id, entries_url)
+    ans_req = urllib.request.Request(entries_url, data=answer_payload,
+                                     headers=sse_headers, method="POST")
+    try:
+        with urllib.request.urlopen(ans_req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+        log.info("[%s] answer stream received (HTTP %s, %d bytes)", where,
+                 getattr(resp, "status", "?"), len(raw))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:500]
+        log.error("[%s] answer POST failed HTTP %s: %s", where, e.code, body)
+        raise RuntimeError(f"ICA {e.code}: {body}")
+    except Exception as exc:  # noqa: BLE001
+        log.error("[%s] answer POST could not reach ICA: %s", where, exc)
+        raise RuntimeError(f"ICA unreachable: {exc}")
+
+    reply = _parse_ica_sse(raw)
+    log.info("[%s] parsed reply (%d chars)", where, len(reply))
+    return reply
+
+
 # ── ICA chat ──────────────────────────────────────────────────────────────────
+
 
 _AI_SYSTEM_PROMPT = (
     "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
@@ -333,7 +448,6 @@ def _sanitize_history(history: list[dict]) -> list[dict]:
 
 
 def ica_chat(history: list[dict], user_message: str) -> str:
-    import urllib.request, urllib.error, time
     cfg      = read_config()
     ic       = cfg.get("ica", {})
     cookie   = (ic.get("full_cookie", "") or "").strip()
@@ -347,69 +461,12 @@ def ica_chat(history: list[dict], user_message: str) -> str:
     if not team_id: raise ValueError("ICA team_id not configured")
     if not chat_id: raise ValueError("ICA chat_id not configured")
 
-    url     = f"{base_url}/chats/{chat_id}/entries"
-    payload = json.dumps({
-        "chatId": chat_id, "type": "PROMPT",
-        "content": {
-            "prompt": user_message, "promptId": "", "promptUuid": "",
-            "isIncludedInContext": True,
-            "sensitiveInformation": {"hasSensitiveInformation": False},
-        },
-    }).encode("utf-8")
-    # ICA's gateway (Akamai) rejects raw spaces in header VALUES with HTTP 501.
-    # The real browser sends teamid/teamname URL-encoded (e.g. "Pier%20Rama"),
-    # so encode them the same way here.
-    headers = {
-        "cookie": cookie,
-        "teamid": _urlparse.quote(team_id, safe=""),
-        "teamname": _urlparse.quote(team_name, safe=""),
-        "Content-Type": "application/json", "Accept": "application/json, text/plain, */*",
-        "Origin": "https://servicesessentials.ibm.com",
-        "Referer": f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty",
-    }
-    _log_ica_request_context("ica_chat", cookie=cookie, team_id=team_id,
-                             team_name=team_name, chat_id=chat_id,
-                             base_url=base_url, url=url)
-    log.info("[ica_chat] POST prompt (%d chars) → %s", len(user_message or ""), url)
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            echo = json.loads(resp.read().decode("utf-8"))
-        log.info("[ica_chat] POST accepted (HTTP %s), entry _id=%s",
-                 getattr(resp, "status", "?"), echo.get("_id", ""))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:500]
-        log.error("[ica_chat] POST failed HTTP %s: %s", e.code, body)
-        raise RuntimeError(f"ICA {e.code}: {body}")
-    except Exception as exc:  # noqa: BLE001 — connection/DNS/timeout etc.
-        log.error("[ica_chat] POST could not reach ICA: %s", exc)
-        raise RuntimeError(f"ICA unreachable: {exc}")
+    reply = _ica_send_and_stream(
+        "ica_chat", cookie=cookie, team_id=team_id, team_name=team_name,
+        chat_id=chat_id, base_url=base_url, prompt=user_message, timeout=120,
+    )
+    return reply or "(No response)"
 
-    entry_id = echo.get("_id", "")
-    poll_url = f"{base_url}/chats/{chat_id}/entries"
-    for attempt in range(1, 31):
-        time.sleep(2)
-        poll_req = urllib.request.Request(poll_url, headers={k: v for k, v in headers.items()
-                                                              if k != "Content-Type"}, method="GET")
-        try:
-            with urllib.request.urlopen(poll_req, timeout=30) as pr:
-                data = json.loads(pr.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            log.warning("[ica_chat] poll %d/30 HTTP %s: %s", attempt, e.code,
-                        e.read().decode("utf-8", "replace")[:200])
-            continue
-        except Exception as exc:  # noqa: BLE001
-            log.warning("[ica_chat] poll %d/30 error: %s", attempt, exc)
-            continue
-        entries = data if isinstance(data, list) else data.get("data", data.get("entries", []))
-        answers = [e for e in entries if e.get("type") == "ANSWER"]
-        if answers:
-            log.info("[ica_chat] answer received on poll %d/30", attempt)
-            return str(answers[-1].get("content", {}).get("answer", "")).strip() or "(No response)"
-    log.warning("[ica_chat] no answer after 30 polls (~60s)")
-    return "(ICA did not respond in time)"
 
 
 
@@ -469,13 +526,12 @@ def test_box_stream():
 def test_ica_stream():
     """Yield step-by-step progress while testing the ICA connection.
 
-    Sends one test prompt to IBM Consulting Advantage and polls for a reply for
-    up to 5 minutes, emitting a heartbeat step on every poll so the UI shows
-    that work is still happening.
+    Sends one test prompt to IBM Consulting Advantage using the two-POST flow
+    (PROMPT then ANSWER trigger) and reads the streamed reply. See
+    _ica_send_and_stream for the transport details.
     """
-    import urllib.request, urllib.error, time
-
     yield {"step": "Reading ICA configuration…", "state": "run"}
+
     cfg       = read_config()
     ic        = cfg.get("ica", {})
     cookie    = (ic.get("full_cookie", "") or "").strip()
@@ -498,118 +554,35 @@ def test_ica_stream():
         return
     yield {"step": "Credentials present (cookie, team ID, chat ID) ✓", "state": "ok"}
 
-    url     = f"{base_url}/chats/{chat_id}/entries"
-    prompt  = "ping — connection test"
-    payload = json.dumps({
-        "chatId": chat_id, "type": "PROMPT",
-        "content": {
-            "prompt": prompt, "promptId": "", "promptUuid": "",
-            "isIncludedInContext": True,
-            "sensitiveInformation": {"hasSensitiveInformation": False},
-        },
-    }).encode("utf-8")
-    # ICA's gateway (Akamai) rejects raw spaces in header VALUES with HTTP 501.
-    # The real browser sends teamid/teamname URL-encoded (e.g. "Pier%20Rama"),
-    # so encode them the same way here.
-    headers = {
-        "cookie": cookie,
-        "teamid": _urlparse.quote(team_id, safe=""),
-        "teamname": _urlparse.quote(team_name, safe=""),
-        "Content-Type": "application/json", "Accept": "application/json, text/plain, */*",
-        "Origin": "https://servicesessentials.ibm.com",
-        "Referer": f"https://servicesessentials.ibm.com/curatorai/apps/ui/new-chat/{chat_id}",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty",
-    }
-
-    _log_ica_request_context("test_ica_stream", cookie=cookie, team_id=team_id,
-                             team_name=team_name, chat_id=chat_id,
-                             base_url=base_url, url=url)
-    log.info("[test_ica_stream] POST test prompt (%d chars) → %s", len(prompt), url)
-
-    # Show the user the actual request we are about to send (readable, with the
-    # cookie redacted) so they can see *what* is being sent, not just "waiting".
+    prompt = "ping — connection test"
     request_summary = (
-        f"POST {url}\n"
+        f"POST {base_url}/chats/{chat_id}/entries\n"
         f"Headers: teamid={team_id or '(none)'}, "
         f"teamname={team_name or '(none)'}, "
         f"cookie={_redact_cookie(cookie)}\n"
-        f"Body: type=PROMPT, chatId={chat_id or '(none)'}, "
-        f'prompt="{prompt}"'
+        f'Body: type=PROMPT then ANSWER trigger, prompt="{prompt}"'
     )
     yield {"step": "Preparing request to ICA…", "state": "ok",
            "detail": request_summary}
-
     yield {"step": f'Sending test prompt "{prompt}" to ICA…', "state": "run"}
-
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            echo = json.loads(resp.read().decode("utf-8"))
-        log.info("[test_ica_stream] POST accepted (HTTP %s), entry _id=%s",
-                 getattr(resp, "status", "?"),
-                 echo.get("_id", "") if isinstance(echo, dict) else "")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:300]
-        log.error("[test_ica_stream] POST failed HTTP %s: %s", e.code, body)
-        yield {"step": f"ICA rejected the request (HTTP {e.code}).", "state": "error",
-               "error": f"ICA {e.code}: {body}"}
+        reply = _ica_send_and_stream(
+            "test_ica_stream", cookie=cookie, team_id=team_id,
+            team_name=team_name, chat_id=chat_id, base_url=base_url,
+            prompt=prompt, timeout=120,
+        )
+    except RuntimeError as exc:
+        yield {"step": "ICA request failed.", "state": "error",
+               "error": str(exc)[:300]}
         return
     except Exception as exc:  # noqa: BLE001
-        log.error("[test_ica_stream] POST could not reach ICA: %s", exc)
-        yield {"step": "Could not reach ICA.", "state": "error", "error": str(exc)[:300]}
+        yield {"step": "Could not reach ICA.", "state": "error",
+               "error": str(exc)[:300]}
         return
-    yield {"step": "Prompt accepted — waiting for a reply…", "state": "ok"}
+    yield {"step": "Reply received from ICA ✓", "state": "ok"}
+    yield {"step": "ICA connection is working.", "state": "done",
+           "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
-
-    # Poll for up to ~5 minutes (150 polls × 2s).
-    poll_url   = f"{base_url}/chats/{chat_id}/entries"
-    max_polls  = 150
-    poll_every = 2
-    total_secs = max_polls * poll_every
-    for attempt in range(1, max_polls + 1):
-        time.sleep(poll_every)
-        elapsed = attempt * poll_every
-        yield {"step": f"Waiting for ICA response… ({elapsed}s / up to {total_secs}s)",
-               "state": "run"}
-        poll_req = urllib.request.Request(
-            poll_url,
-            headers={k: v for k, v in headers.items() if k != "Content-Type"},
-            method="GET",
-        )
-        try:
-            with urllib.request.urlopen(poll_req, timeout=30) as pr:
-                data = json.loads(pr.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            # Previously swallowed silently — the #1 reason a "hung" test was
-            # impossible to diagnose. Log the code + body every time.
-            log.warning("[test_ica_stream] poll %d/%d HTTP %s: %s", attempt,
-                        max_polls, e.code, e.read().decode("utf-8", "replace")[:200])
-            continue
-        except Exception as exc:  # noqa: BLE001 — connection/DNS/timeout etc.
-            log.warning("[test_ica_stream] poll %d/%d error: %s", attempt,
-                        max_polls, exc)
-            continue
-        entries = data if isinstance(data, list) else data.get("data", data.get("entries", []))
-        answers = [e for e in entries if e.get("type") == "ANSWER"]
-        # Log what came back so a non-responding request (accepted POST but no
-        # ANSWER ever arriving) is visible: how many entries, and their types.
-        if attempt == 1 or attempt % 15 == 0:
-            types = [e.get("type") for e in entries] if isinstance(entries, list) else "?"
-            log.info("[test_ica_stream] poll %d/%d: %d entr(y/ies), types=%s",
-                     attempt, max_polls,
-                     len(entries) if isinstance(entries, list) else -1, types)
-        if answers:
-            reply = str(answers[-1].get("content", {}).get("answer", "")).strip() or "(empty)"
-            log.info("[test_ica_stream] answer received on poll %d/%d", attempt, max_polls)
-            yield {"step": "Reply received from ICA ✓", "state": "ok"}
-            yield {"step": "ICA connection is working.", "state": "done",
-                   "detail": f"Reply: {reply[:120]}"}
-            return
-
-    log.warning("[test_ica_stream] no ANSWER after %d polls (~%ds)", max_polls, total_secs)
-    yield {"step": f"No reply after {total_secs}s.", "state": "error",
-           "error": "ICA did not respond in time (5 min)."}
 
 
 

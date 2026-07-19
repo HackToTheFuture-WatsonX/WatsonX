@@ -38,6 +38,12 @@ if _args.data_dir:
     from config import set_data_dir
     set_data_dir(_args.data_dir)
 
+# Initialize the SQLite database (creates schema on first run) now that the
+# data dir is resolved. Must happen before any router imports touch the DB.
+import db
+db.init_db()
+
+
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

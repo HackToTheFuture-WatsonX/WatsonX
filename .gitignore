@@ -62,6 +62,9 @@ ICA Cookie Parser/
 node_modules/
 dist/
 build/
+.cline
+.claude
+pdf_extractor_v3.db*
 
 # -- PDF Extractor V3 build artifacts (never commit generated output) ----------
 # PyInstaller-bundled backend (~1000 files: DLLs, tzdata, dist-info)

@@ -107,7 +107,8 @@ export default function ChatBubble() {
   }, [history, open])
 
   useEffect(() => {
-    fetch('/api/health').then(() => {
+    const port = (window as any).__V3_API_PORT__ ?? 8765
+    fetch(`http://127.0.0.1:${port}/api/health`).then(() => {
       setModel('ICA Agent · Llama 3.1 14b')
     }).catch(() => setModel('Backend offline'))
   }, [])

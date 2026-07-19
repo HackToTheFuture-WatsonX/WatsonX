@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from config import (
     read_config_safe, write_config, default_config,
-    jwt_config_path, write_jwt_config,
+    jwt_config_exists, write_jwt_config,
 )
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -120,7 +120,7 @@ def settings_status():
     cfg = read_config_safe()
     box = cfg.get("box", {})
     ica = cfg.get("ica", {})
-    jwt_exists = jwt_config_path().exists()
+    jwt_exists = jwt_config_exists()
 
     box_ok = bool(box.get("folder_id")) and jwt_exists
     ica_ok = bool(ica.get("full_cookie")) and bool(ica.get("team_id")) and bool(ica.get("chat_id"))

@@ -18,9 +18,20 @@ interface ChatStore {
   hydrate: () => Promise<void>
 }
 
+// Resolve the backend base URL the same way useApi()/Settings do. In the
+// packaged Electron app the renderer is NOT served over http://127.0.0.1, so a
+// bare relative fetch('/api/…') never reaches the FastAPI backend — it fails
+// silently and leaves icaConfigured stuck at false (ICA shows "not configured"
+// and the "Chat with AI" toggle stays disabled even after a successful test +
+// save). Always prefix the absolute backend origin.
+function apiBase(): string {
+  const port = (window as any).__V3_API_PORT__ ?? 8765
+  return `http://127.0.0.1:${port}`
+}
+
 async function persistEnabled(enabled: boolean): Promise<void> {
   try {
-    await fetch('/api/settings', {
+    await fetch(`${apiBase()}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ config: { settings: { chat_enabled: enabled } } }),
@@ -51,9 +62,10 @@ export const useChatStore = create<ChatStore>()((set, get) => ({
 
   hydrate: async () => {
     try {
+      const base = apiBase()
       const [cfgRes, statusRes] = await Promise.all([
-        fetch('/api/settings').then((r) => r.json()).catch(() => null),
-        fetch('/api/settings/status').then((r) => r.json()).catch(() => null),
+        fetch(`${base}/api/settings`).then((r) => r.json()).catch(() => null),
+        fetch(`${base}/api/settings/status`).then((r) => r.json()).catch(() => null),
       ])
 
       const icaConfigured: boolean = !!statusRes?.ica?.configured
