@@ -336,7 +336,7 @@ def ica_chat(history: list[dict], user_message: str) -> str:
     import urllib.request, urllib.error, time
     cfg      = read_config()
     ic       = cfg.get("ica", {})
-    cookie   = ic.get("full_cookie", "")
+    cookie   = (ic.get("full_cookie", "") or "").strip()
     team_id  = ic.get("team_id", "")
     team_name = ic.get("team_name", "")
     chat_id  = ic.get("chat_id", "")
@@ -478,7 +478,7 @@ def test_ica_stream():
     yield {"step": "Reading ICA configuration…", "state": "run"}
     cfg       = read_config()
     ic        = cfg.get("ica", {})
-    cookie    = ic.get("full_cookie", "")
+    cookie    = (ic.get("full_cookie", "") or "").strip()
     team_id   = ic.get("team_id", "")
     team_name = ic.get("team_name", "")
     chat_id   = ic.get("chat_id", "")

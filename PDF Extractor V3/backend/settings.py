@@ -105,6 +105,11 @@ def save_settings(patch: ConfigPatch):
     merged = default_config()
     _deep_merge(merged, current)
     _deep_merge(merged, patch.config)
+    # Trim the ICA cookie in case the textarea introduced leading/trailing
+    # whitespace or newlines (which would cause HTTP 400/403 from ICA's gateway).
+    ica = merged.get("ica", {})
+    if isinstance(ica.get("full_cookie"), str):
+        ica["full_cookie"] = ica["full_cookie"].strip()
     path = write_config(merged)
     return {"status": "saved", "path": str(path), "config": _mask_config(merged)}
 
