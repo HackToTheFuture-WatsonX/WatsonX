@@ -7,6 +7,7 @@ import threading
 from fastapi import APIRouter
 from config import local_folder
 from box_client import get_box_client
+import activity
 import events
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
@@ -109,6 +110,7 @@ def _sync_thread():
         if _cancel.is_set():
             _emit_log("Sync cancelled by user.")
             events.emit(events.SYNC_DONE, {"cancelled": True})
+            activity.write("SYNC", "Sync cancelled by user.")
             return
         from scanner import run_scan
         run_scan()
@@ -118,11 +120,26 @@ def _sync_thread():
         events.emit(events.SYNC_DONE, {
             "downloaded": downloaded, "skipped": skipped, "errors": errors
         })
+        lines = [
+            f"Sync complete — {downloaded} downloaded, "
+            f"{skipped} skipped, {len(errors)} failed.",
+        ]
+        if errors:
+            lines.append("")
+            for err in errors:
+                lines.append(f"  [ERR] {err}")
+        # An otherwise successful sync with per-item errors is still a Warning,
+        # not an Error — the run itself completed. Only a total-failure
+        # exception below is classified as Error.
+        activity.write("SYNC", "\n".join(lines),
+                       level="warning" if errors else "info")
     except _Cancelled:
         _emit_log("Sync cancelled by user.")
         events.emit(events.SYNC_DONE, {"cancelled": True})
+        activity.write("SYNC", "Sync cancelled by user.", level="warning")
     except Exception as exc:
         events.emit(events.SYNC_DONE, {"error": str(exc)})
+        activity.write("SYNC", f"Sync failed: {exc}", level="error")
     finally:
         _status["running"] = False
         _cancel.clear()

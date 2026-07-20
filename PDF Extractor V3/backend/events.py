@@ -18,6 +18,14 @@ SYNC_DONE = "sync:done"
 SCAN_PROGRESS = "scan:progress"
 SCAN_DONE     = "scan:done"
 
+# ── Upload events ─────────────────────────────────────────────────────────────
+# Per-file progress for the Scan page's Upload Files button. Each event's data:
+#   {"name": "...", "state": "saving"|"uploaded"|"skipped"|"error",
+#    "reason": "..." (state != "saving"),
+#    "index": 1-based file index, "total": total files in this batch}
+UPLOAD_PROGRESS = "upload:progress"
+UPLOAD_DONE     = "upload:done"
+
 # ── Extract events ─────────────────────────────────────────────────────────────
 EXTRACT_PROGRESS = "extract:progress"
 EXTRACT_RESULT   = "extract:result"

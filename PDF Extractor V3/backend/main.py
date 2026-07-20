@@ -124,6 +124,16 @@ if __name__ == "__main__":
     if _args.data_dir:
         print(f"[V3 Backend] Data dir -> {_args.data_dir}")
 
+    # Enumerate every registered route so the packaged app's backend log makes
+    # it obvious whether the binary contains the endpoints the frontend expects
+    # (in particular /api/scan/upload). Without this, diagnosing "nothing
+    # happens on upload" from a customer machine is guesswork.
+    print("[V3 Backend] Registered routes:")
+    from fastapi.routing import APIRoute
+    for _route in _fastapi.routes:
+        if isinstance(_route, APIRoute):
+            methods = ",".join(sorted(_route.methods or []))
+            print(f"[V3 Backend]   {methods:<10} {_route.path}")
 
     # Pass the app object directly (NOT the "main:app" import string): inside a
     # PyInstaller frozen bundle there is no importable "main" module on sys.path,
@@ -133,6 +143,10 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=port,
         reload=False,
-        log_level="warning",
+        # "info" surfaces every request line (method + path + status). Without
+        # this, "warning" hides both a working upload and a 4xx/5xx failure,
+        # making "nothing is happening" indistinguishable from "500 error".
+        log_level="info",
+        access_log=True,
     )
 

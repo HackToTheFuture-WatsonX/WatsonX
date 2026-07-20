@@ -17,11 +17,31 @@ const PAGE_SIZES = [15, 20, 30, 50] as const
 type Level = 'Info' | 'Warning' | 'Error'
 type LevelFilter = 'All' | Level
 
-function inferLevel(content: string): Level {
-  const lower = content.toLowerCase()
-  if (/error|fail|exception/.test(lower)) return 'Error'
-  if (/warning|warn|skip/.test(lower))    return 'Warning'
-  return 'Info'
+// Machine-readable level marker written by backend/activity.py at the start of
+// every activity-log row: e.g. "[[level=info]] Sync complete — …". We parse it
+// out for classification AND strip it from the displayed content so users never
+// see the tag. Falls back to a keyword heuristic for legacy rows written before
+// the tag existed.
+const LEVEL_TAG_RE = /^\[\[level=(info|warning|error)\]\]\s*/i
+
+function parseContent(raw: string): { level: Level; body: string } {
+  const m = raw.match(LEVEL_TAG_RE)
+  if (m) {
+    const tag = m[1].toLowerCase()
+    const body = raw.replace(LEVEL_TAG_RE, '')
+    const level: Level = tag === 'error' ? 'Error' : tag === 'warning' ? 'Warning' : 'Info'
+    return { level, body }
+  }
+  // Legacy heuristic — used only for rows written before the level tag existed.
+  // Slightly smarter than before: ignore "0 error(s)" / "0 failed" phrasing so
+  // successful completion summaries don't misclassify.
+  const lower = raw.toLowerCase()
+  const hasRealError =
+    /(?:^|[^\d])(?:[1-9]\d*)\s*(?:error|fail|failed|failure)/.test(lower) ||
+    /exception|traceback|unhandled/.test(lower)
+  if (hasRealError) return { level: 'Error', body: raw }
+  if (/warning|warn|cancel/.test(lower)) return { level: 'Warning', body: raw }
+  return { level: 'Info', body: raw }
 }
 
 const LEVEL_BADGE: Record<Level, string> = {
@@ -63,7 +83,7 @@ export default function Logs() {
     () =>
       levelFilter === 'All'
         ? entries
-        : entries.filter(e => inferLevel(e.content) === levelFilter),
+        : entries.filter(e => parseContent(e.content).level === levelFilter),
     [entries, levelFilter],
   )
 
@@ -176,7 +196,7 @@ export default function Logs() {
             </thead>
             <tbody>
               {paged.map(entry => {
-                const level = inferLevel(entry.content)
+                const { level, body } = parseContent(entry.content)
                 const ts    = (() => {
                   try { return new Date(entry.occurred_at).toLocaleString() }
                   catch { return entry.occurred_at }
@@ -213,7 +233,7 @@ export default function Logs() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300 max-w-xs truncate align-top">
-                        {firstLine(entry.content)}
+                        {firstLine(body)}
                       </td>
                     </tr>
                     {isOpen && (
@@ -224,7 +244,7 @@ export default function Logs() {
                         <td colSpan={4} className="px-4 py-3">
                           <pre className="whitespace-pre-wrap break-words font-mono text-xs
                                           text-gray-700 dark:text-gray-300">
-                            {entry.content}
+                            {body}
                           </pre>
                         </td>
                       </tr>

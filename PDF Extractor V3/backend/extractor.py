@@ -44,12 +44,16 @@ def build_extract_folder(base_dir: Path, when: datetime) -> Path:
     return folder
 
 
-def write_extraction_log(ref_number: str, when: datetime, content: str) -> int:
-    """Persist an extraction log entry to the database (single source of truth).
-    Returns the new log row id."""
-    import db
+def write_extraction_log(ref_number: str, when: datetime, content: str) -> None:
+    """Persist an extraction log entry via the shared activity helper.
+
+    Routing through activity.write ensures the settings.log_activity toggle
+    applies consistently across all transactions (sync, scan, upload, extract,
+    ICA/Box tests, settings save, etc.) instead of extraction bypassing it.
+    """
+    import activity
     safe_ref = (ref_number or "").strip() or "UNKNOWN_REF"
-    return db.log_add(safe_ref, when, content)
+    activity.write(safe_ref, content, when=when)
 
 
 

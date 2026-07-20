@@ -10,6 +10,7 @@ import urllib.parse as _urlparse
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
+import activity
 from config import (
     read_config, read_config_safe, write_config,
     extracted_folder, ai_json_dir, _data_dir,
@@ -476,6 +477,7 @@ def test_box_stream():
     try:
         from box_client import get_box_client
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Box client module failed to load: {exc}", level="error")
         yield {"step": "Could not load Box client module.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -484,6 +486,7 @@ def test_box_stream():
     try:
         client, cfg = get_box_client()
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Box authentication failed: {exc}", level="error")
         yield {"step": "Box authentication failed.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -494,6 +497,7 @@ def test_box_stream():
         user = client.user().get()
         user_login = getattr(user, "login", getattr(user, "name", "unknown"))
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Could not fetch Box user: {exc}", level="error")
         yield {"step": "Could not fetch Box user.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -505,11 +509,17 @@ def test_box_stream():
         folder = client.folder(folder_id).get()
         folder_name = getattr(folder, "name", folder_id)
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST",
+                       f"Could not open configured folder (id {folder_id}): {exc}",
+                       level="error")
         yield {"step": "Could not open the configured folder.", "state": "error",
                "error": str(exc)[:300]}
         return
     yield {"step": f'Folder "{folder_name}" reachable ✓', "state": "ok"}
 
+    activity.write("BOX-TEST",
+                   f"Box connection OK — user={user_login}, folder={folder_name!r}.",
+                   level="info")
     yield {"step": "Box connection is working.", "state": "done",
            "detail": f'Connected as {user_login} · folder "{folder_name}"'}
 
@@ -539,6 +549,9 @@ def test_ica_stream():
     if not team_id: missing.append("team ID")
     if not chat_id: missing.append("chat ID")
     if missing:
+        activity.write("ICA-TEST",
+                       f"ICA test aborted — missing credentials: {', '.join(missing)}.",
+                       level="warning")
         yield {"step": f"Missing ICA credentials: {', '.join(missing)}.",
                "state": "error",
                "error": f"ICA not configured — missing {', '.join(missing)}."}
@@ -563,14 +576,19 @@ def test_ica_stream():
             prompt=prompt, timeout=120,
         )
     except RuntimeError as exc:
+        activity.write("ICA-TEST", f"ICA test failed: {exc}", level="error")
         yield {"step": "ICA request failed.", "state": "error",
                "error": str(exc)[:300]}
         return
     except Exception as exc:  # noqa: BLE001
+        activity.write("ICA-TEST", f"ICA unreachable: {exc}", level="error")
         yield {"step": "Could not reach ICA.", "state": "error",
                "error": str(exc)[:300]}
         return
     yield {"step": "Reply received from ICA ✓", "state": "ok"}
+    activity.write("ICA-TEST",
+                   f'ICA test OK — prompt="{prompt}", reply preview: {(reply or "(empty)")[:200]}',
+                   level="info")
     yield {"step": "ICA connection is working.", "state": "done",
            "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
@@ -585,6 +603,9 @@ def initialize_ica_system_prompt():
     yield {"step": "Loading bee_prompt.md…", "state": "run"}
     prompt = bee_prompt_text()
     if not prompt:
+        activity.write("ICA-INIT",
+                       "ICA initialization aborted — bee_prompt.md missing or empty.",
+                       level="error")
         yield {"step": "Could not load bee_prompt.md.", "state": "error",
                "error": "bee_prompt.md is missing or empty. "
                         "Expected at backend/prompt/bee_prompt.md."}
@@ -608,6 +629,9 @@ def initialize_ica_system_prompt():
     if not team_id: missing.append("team ID")
     if not chat_id: missing.append("chat ID")
     if missing:
+        activity.write("ICA-INIT",
+                       f"ICA initialization aborted — missing credentials: {', '.join(missing)}.",
+                       level="warning")
         yield {"step": f"Missing ICA credentials: {', '.join(missing)}.",
                "state": "error",
                "error": f"ICA not configured — missing {', '.join(missing)}."}
@@ -631,10 +655,12 @@ def initialize_ica_system_prompt():
             prompt=prompt, timeout=180,
         )
     except RuntimeError as exc:
+        activity.write("ICA-INIT", f"ICA priming failed: {exc}", level="error")
         yield {"step": "ICA priming request failed.", "state": "error",
                "error": str(exc)[:300]}
         return
     except Exception as exc:  # noqa: BLE001
+        activity.write("ICA-INIT", f"ICA unreachable during init: {exc}", level="error")
         yield {"step": "Could not reach ICA.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -648,11 +674,21 @@ def initialize_ica_system_prompt():
         write_config(latest)
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not persist system_prompt_chat_id: %s", exc)
+        activity.write("ICA-INIT",
+                       f"ICA primed but persisting system_prompt_chat_id failed: {exc}",
+                       level="error")
         yield {"step": "Prompt sent but could not persist state.", "state": "error",
                "error": str(exc)[:300]}
         return
     yield {"step": f"Marked chat_id {chat_id[:8]}… as primed ✓", "state": "ok"}
 
+    activity.write(
+        "ICA-INIT",
+        f"ICA initialized — chat_id={chat_id[:8]}…, "
+        f"prompt=bee_prompt.md ({len(prompt)} chars), "
+        f"reply preview: {(reply or '(empty)')[:200]}",
+        level="info",
+    )
     yield {"step": "ICA system prompt initialized.", "state": "done",
            "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 

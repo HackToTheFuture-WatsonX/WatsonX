@@ -9,6 +9,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getApiPort: () => ipcRenderer.invoke('get-api-port'),
 
   /**
+   * Path to the persistent backend log file the main process writes on every
+   * launch. Renderer surfaces (e.g. the Scan page's Diagnostics section) show
+   * this so users on packaged builds can find the log without DevTools.
+   */
+  getBackendLogPath: () => ipcRenderer.invoke('get-backend-log-path'),
+
+  /**
    * Open a browser-assisted ICA login window. The user signs in normally
    * (IBMid / SSO); the main process captures the session cookie and the
    * team/chat identifiers from the authenticated ICA API traffic.

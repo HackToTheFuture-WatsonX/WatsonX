@@ -45,7 +45,18 @@ def run(cmd: list, **kwargs):
 # silently omit them and the shipped app fails at runtime (e.g. the Box JWT
 # connection dies with ModuleNotFoundError: boxsdk). We refuse to build in that
 # case so a broken bundle can never be produced again.
-REQUIRED_RUNTIME_MODULES = ["boxsdk", "jwt", "fastapi", "uvicorn", "socketio", "fitz"]
+# NOTE: python-multipart imports as `multipart` in <=0.0.9 and as
+# `python_multipart` in >=0.0.12. FastAPI accepts either. We accept either here
+# too — the preflight below tries alternates and only fails if ALL variants are
+# missing.
+REQUIRED_RUNTIME_MODULES: list = [
+    "boxsdk", "jwt", "fastapi", "uvicorn", "socketio", "fitz",
+    # Needed by /api/scan/upload — without these the packaged app can save
+    # zero bytes when a user picks a file, which is the exact "nothing happens"
+    # symptom we've seen. Preflight refuses to build if they're missing.
+    "aiofiles",
+    ("multipart", "python_multipart"),  # tuple = accept any of these names
+]
 
 
 def preflight_check():
@@ -54,15 +65,24 @@ def preflight_check():
     The previous shipped build was produced with the WRONG interpreter (a venv
     that had SQLAlchemy/pandas but NOT boxsdk/fastapi), so boxsdk never made it
     into _internal/ and Box connections failed in the packaged app. Guard against
-    a recurrence."""
+    a recurrence — including for the newer multipart/aiofiles deps whose absence
+    silently breaks the scan/upload endpoint."""
     print(f"\n[0/3] Preflight: verifying build interpreter has runtime deps…")
     print(f"  Interpreter: {sys.executable}")
     missing = []
-    for mod in REQUIRED_RUNTIME_MODULES:
-        try:
-            __import__(mod)
-        except Exception as e:  # noqa: BLE001
-            missing.append(f"{mod} ({e})")
+    for entry in REQUIRED_RUNTIME_MODULES:
+        # entry is either a str (single module) or a tuple (accept any of).
+        candidates = (entry,) if isinstance(entry, str) else tuple(entry)
+        last_err = None
+        for name in candidates:
+            try:
+                __import__(name)
+                last_err = None
+                break
+            except Exception as e:  # noqa: BLE001
+                last_err = f"{name} ({e})"
+        if last_err is not None:
+            missing.append(" or ".join(candidates) + f" — last error: {last_err}")
     if missing:
         print("\n  ERROR: The interpreter used for this build is missing required")
         print("  runtime dependencies. PyInstaller would ship a BROKEN bundle.")

@@ -16,6 +16,17 @@ export interface ScanResult {
   completed: number
 }
 
+export interface UploadResult {
+  uploaded: { name: string; key: string }[]
+  skipped:  { name: string; reason: string; key: string }[]
+  errors:   { name: string; error: string }[]
+  totals: {
+    total:     number
+    pending:   number
+    completed: number
+  }
+}
+
 export interface ExtractResult {
   status:  'ok' | 'error'
   fname:   string
