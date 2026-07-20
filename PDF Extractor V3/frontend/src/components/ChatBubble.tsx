@@ -93,6 +93,10 @@ const WELCOME: ChatMessage = {
   content: "Hello! I'm Bee, your AI Assistant (V3).\n\nProcess flow:  Scan → Sync → Extract → Chat\n\n• 'look up [name]'  |  'status of [ref]'\n• 'scan'  |  'sync'  |  'extract'\n• 'logs this week'  |  'file status'",
 }
 
+// Minimum panel size = the original fixed size (24rem × 32rem).
+const MIN_W = 384
+const MIN_H = 512
+
 export default function ChatBubble() {
   const { enabled, open, setOpen, toggleOpen } = useChatStore()
   const { post, loading } = useApi()
@@ -100,7 +104,35 @@ export default function ChatBubble() {
   const [input,   setInput]   = useState('')
   const [busy,    setBusy]    = useState(false)
   const [model,   setModel]   = useState('—')
+  const [size,    setSize]    = useState({ w: MIN_W, h: MIN_H })
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Drag-to-resize from the top-left corner. The panel is anchored to the
+  // bottom-right, so growing means increasing width (drag left) and height
+  // (drag up). Size is clamped to the current size as the minimum and to the
+  // viewport as the maximum.
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const startW = size.w
+    const startH = size.h
+
+    function onMove(ev: PointerEvent) {
+      const maxW = window.innerWidth  - 40   // keep clear of right margin
+      const maxH = window.innerHeight - 128   // keep clear of launcher/top
+      const w = Math.min(maxW, Math.max(MIN_W, startW + (startX - ev.clientX)))
+      const h = Math.min(maxH, Math.max(MIN_H, startH + (startY - ev.clientY)))
+      setSize({ w, h })
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -145,12 +177,26 @@ export default function ChatBubble() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 w-[24rem] max-w-[calc(100vw-2.5rem)]
-                        h-[32rem] max-h-[calc(100vh-8rem)] flex flex-col
-                        rounded-2xl overflow-hidden shadow-2xl
-                        border border-border-light dark:border-border-dark
-                        bg-card-light dark:bg-card-dark">
+        <div
+          className="fixed bottom-24 right-5 z-50 max-w-[calc(100vw-2.5rem)]
+                     max-h-[calc(100vh-8rem)] flex flex-col
+                     rounded-2xl overflow-hidden shadow-2xl
+                     border border-border-light dark:border-border-dark
+                     bg-card-light dark:bg-card-dark"
+          style={{ width: size.w, height: size.h }}
+        >
+          {/* Resize handle (top-left corner) */}
+          <div
+            onPointerDown={startResize}
+            title="Drag to resize"
+            className="absolute top-0 left-0 z-10 w-5 h-5 cursor-nwse-resize group"
+          >
+            <span className="absolute top-1 left-1 w-2.5 h-2.5 border-t-2 border-l-2
+                             border-gray-400/60 group-hover:border-accent rounded-tl-sm transition-colors" />
+          </div>
+
           {/* Header */}
+
           <div className="shrink-0 border-b border-border-light dark:border-border-dark
                           bg-card-light dark:bg-card-dark px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2.5">

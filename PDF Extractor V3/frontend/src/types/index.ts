@@ -46,6 +46,15 @@ export interface ViewSection {
   groups: ViewGroup[]
 }
 
+export interface ViewRow {
+  name:     string   // base name without extension
+  ref:      string
+  word:     string   // path to .docx (or "" if absent)
+  excel:    string   // path to .xlsx (or "" if absent)
+  json:     string   // path to .json (or "" if absent)
+  datetime: string   // "YYYY-MM-DD HH:MM"
+}
+
 export interface InsightsStats {
   total:     number
   completed: number
