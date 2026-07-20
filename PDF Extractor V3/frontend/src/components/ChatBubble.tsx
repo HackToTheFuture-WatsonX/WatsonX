@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Trash2, MessageSquare, X } from 'lucide-react'
-import Spinner from './ui/Spinner'
+import { MessageSquare, Send, Trash2, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useChatStore } from '../store/chat'
 import type { ChatMessage, LinksPayload } from '../types'
+import Spinner from './ui/Spinner'
 
 function renderMarkdown(text: string): JSX.Element[] {
   return text.split('\n').map((line, i) => {
@@ -90,7 +90,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
 
 const WELCOME: ChatMessage = {
   role: 'system',
-  content: "Hello! I'm Detective Conan, your AI Assistant (V3).\n\nProcess flow:  Scan → Sync → Extract → Chat\n\n• 'look up [name]'  |  'status of [ref]'\n• 'scan'  |  'sync'  |  'extract'\n• 'logs this week'  |  'file status'",
+  content: "Hello! I'm Bee, your AI Assistant (V3).\n\nProcess flow:  Scan → Sync → Extract → Chat\n\n• 'look up [name]'  |  'status of [ref]'\n• 'scan'  |  'sync'  |  'extract'\n• 'logs this week'  |  'file status'",
 }
 
 export default function ChatBubble() {
@@ -159,7 +159,7 @@ export default function ChatBubble() {
                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green rounded-full border-2 border-white dark:border-card-dark" />
               </div>
               <div>
-                <p className="font-bold text-sm text-gray-900 dark:text-white leading-tight">Detective Conan</p>
+                <p className="font-bold text-sm text-gray-900 dark:text-white leading-tight">Bee</p>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400">{model}</p>
               </div>
             </div>

@@ -12,10 +12,11 @@ export default function Scan() {
   const { get }   = useApi()
   const [data, setData] = useState<ScanResult | null>(null)
 
-  const scanning   = useRunStore((s) => s.scanRunning)
-  const scanFound  = useRunStore((s) => s.scanFound)
-  const startScan  = useRunStore((s) => s.startScan)
-  const cancelScan = useRunStore((s) => s.cancelScan)
+  const scanning    = useRunStore((s) => s.scanRunning)
+  const scanFound   = useRunStore((s) => s.scanFound)
+  const scanSummary = useRunStore((s) => s.scanSummary)
+  const startScan   = useRunStore((s) => s.startScan)
+  const cancelScan  = useRunStore((s) => s.cancelScan)
   const prevScanning = useRef(scanning)
 
   async function load() {
@@ -60,6 +61,14 @@ export default function Scan() {
           <span className="badge-accent">{data.total} Total</span>
           <span className="badge-green">{data.completed} Completed</span>
           <span className="badge-amber">{data.pending} Pending</span>
+        </div>
+      )}
+
+      {/* Scan error panel */}
+      {scanSummary?.error && !scanSummary.cancelled && (
+        <div className="mt-1 mb-5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1">Scan error</p>
+          <p className="text-xs text-red-600 dark:text-red-400 font-mono break-words">⚠ {scanSummary.error}</p>
         </div>
       )}
 

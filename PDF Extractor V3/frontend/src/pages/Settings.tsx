@@ -126,9 +126,8 @@ export default function Settings() {
 
   // ── Per-section clear helpers ───────────────────────────────────────────────
   // Each blanks its section's fields and saves. Sending "" (not the mask marker)
-  // tells the backend to actually clear the stored value. The Box JWT file lives
-  // in a SEPARATE file (box_jwt_config.json), so clearing config fields never
-  // touches it.
+  // tells the backend to actually clear the stored value. The Box JWT config is
+  // stored separately in the database, so clearing config fields never touches it.
   function clearBox() {
     if (!cfg) return
     setBusy('clear-box')
@@ -195,8 +194,8 @@ export default function Settings() {
     if (!jwtText.trim()) return
     setBusy('jwt'); setJwtMsg(null)
     // Persist the current in-memory cfg FIRST so any unsaved folder IDs the user
-    // typed aren't discarded by the load() below. The JWT file (jwtText) lives in
-    // a separate box_jwt_config.json and separate state, so a plain load() would
+    // typed aren't discarded by the load() below. The JWT config lives in
+    // a separate database row and separate state, so a plain load() would
     // otherwise reset cfg to the last-saved values and wipe the user's edits.
     if (cfg) await post<{ status: string; config: AppConfig }>('/api/settings', { config: cfg })
     const res = await post<{ status: string; error?: string }>('/api/settings/jwt', { content: jwtText })

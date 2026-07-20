@@ -136,6 +136,17 @@ declare global {
   }
 }
 
+export interface LogEntry {
+  id:          number
+  ref_number:  string
+  occurred_at: string   // ISO 8601, e.g. "2024-01-15T09:32:00"
+  content:     string
+}
+
+export interface LogsResponse {
+  entries: LogEntry[]
+}
+
 export interface SettingsStatus {
   box: {
     configured:   boolean

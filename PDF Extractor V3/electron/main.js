@@ -206,7 +206,6 @@ function ensureUserConfig() {
   if (!app.isPackaged) return
   const userData   = app.getPath('userData')
   const destConfig = path.join(userData, 'config.json')
-  const destJwt    = path.join(userData, 'box_jwt_config.json')
   const srcConfig  = path.join(process.resourcesPath, 'backend', 'config.json')
 
   if (!fs.existsSync(destConfig) && fs.existsSync(srcConfig)) {
@@ -214,10 +213,7 @@ function ensureUserConfig() {
     fs.copyFileSync(srcConfig, destConfig)
     console.log(`[V3] Config template copied to ${destConfig}`)
   }
-  // Create an empty jwt placeholder so users know where to place it
-  if (!fs.existsSync(destJwt)) {
-    fs.writeFileSync(destJwt, JSON.stringify({ _note: "Replace this file with your Box JWT config JSON" }, null, 2))
-  }
+  // JWT config is stored in the SQLite database — upload it via Settings page.
 }
 
 app.whenReady().then(async () => {

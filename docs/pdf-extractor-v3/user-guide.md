@@ -22,7 +22,7 @@ This guide walks you through every page and action in PDF Extractor V3, from fir
 6. [Extract Page — Process Reports](#6-extract-page--process-reports)
 7. [View Page — Browse Extracted Files](#7-view-page--browse-extracted-files)
 8. [Insights Page — Stats & Charts](#8-insights-page--stats--charts)
-9. [Chat Page — Ask Detective Conan](#9-chat-page--ask-detective-conan)
+9. [Chat Page — Ask Bee](#9-chat-page--ask-detective-conan)
 10. [Troubleshooting](#10-troubleshooting)
 
 ---
@@ -62,7 +62,7 @@ The Home page shows five quick-access cards. Click any card to jump directly to 
 | Sync Box to Local | Download PDFs from IBM Box |
 | Extract Files | Run the extraction pipeline |
 | View Extracted Files | Browse Word / Excel / JSON outputs |
-| Chat with AI Assistant | Ask Detective Conan about reports |
+| Chat with AI Assistant | Ask Bee about reports |
 
 The **sidebar** on the left is always visible and shows the same navigation links. The sun/moon icon at the top right toggles dark and light mode.
 
@@ -360,7 +360,7 @@ Below the chart, you can view extraction logs. Click a period to see the log ent
 
 ---
 
-## 9. Chat Page — Ask Detective Conan
+## 9. Chat Page — Ask Bee
 
 The Chat page lets you ask questions and give commands in plain language.
 
@@ -383,7 +383,7 @@ These work without ICA configured:
 
 ### Report Lookup
 
-When you say `look up John Smith`, Detective Conan searches all extracted JSON files for that name. If found, he returns a formatted block:
+When you say `look up John Smith`, Bee searches all extracted JSON files for that name. If found, he returns a formatted block:
 
 ```
 Subject: Smith, John | Ref: RN-123456_789_10 | Delivery: 2026-07-08
@@ -403,7 +403,7 @@ Overall Status: ✅ Cleared
 
 ### Opening a Report File
 
-Say `generate report for John Smith`. Detective Conan will:
+Say `generate report for John Smith`. Bee will:
 1. Find the report
 2. Ask which file type you want: **Word**, **Excel**, or **JSON**
 3. Open the file in the appropriate application
@@ -412,7 +412,7 @@ Say `generate report for John Smith`. Detective Conan will:
 
 If ICA is configured and your question does not match a built-in command, it is forwarded to IBM Consulting Advantage. Use this for free-form questions.
 
-> **Important:** Detective Conan will never invent report data. If ICA tries to fabricate a report, the hallucination guard catches it and replaces the response with a safe message. Always use `look up [name]` to get real report data.
+> **Important:** Bee will never invent report data. If ICA tries to fabricate a report, the hallucination guard catches it and replaces the response with a safe message. Always use `look up [name]` to get real report data.
 
 ### Chat Tips
 - The chat history is preserved while the app is open (Zustand store)

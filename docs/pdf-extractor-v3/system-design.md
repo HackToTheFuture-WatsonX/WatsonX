@@ -126,7 +126,7 @@ graph TD
 | `frontend/src/pages/Extract.tsx` | Extraction trigger + per-file progress bar + results table |
 | `frontend/src/pages/View.tsx` | Browse extracted files (Word/Excel/JSON) grouped by reference; open in OS default app |
 | `frontend/src/pages/Insights.tsx` | Stat cards (total/completed/pending) + bar chart; selectable period |
-| `frontend/src/pages/Chat.tsx` | Conversational chat with Detective Conan; bubble UI; history preserved in Zustand |
+| `frontend/src/pages/Chat.tsx` | Conversational chat with Bee; bubble UI; history preserved in Zustand |
 | `frontend/src/pages/Settings.tsx` | GUI for all config fields; Box JWT upload; per-section Clear buttons; Box/ICA SSE streaming connection tests; ICA browser login button |
 | `frontend/src/hooks/useApi.ts` | `fetch` wrapper pointing to `http://127.0.0.1:<port>` |
 | `frontend/src/hooks/useSocket.ts` | `socket.io-client` connection + typed event subscriptions |

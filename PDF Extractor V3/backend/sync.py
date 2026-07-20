@@ -5,8 +5,8 @@ Emits SocketIO events for live log streaming via events.emit() (thread-safe).
 """
 import threading
 from fastapi import APIRouter
-from config import read_config, local_folder
-from box_client import _resolve_jwt_path
+from config import local_folder
+from box_client import get_box_client
 import events
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
@@ -31,31 +31,22 @@ def sync_box_to_local() -> tuple[int, int, list[str]]:
     Returns (downloaded, skipped, errors).
     Honors the _cancel event between items.
     """
-    cfg               = read_config()
-    box_cfg           = cfg["box"]
-    folder_id         = box_cfg.get("folder_id", "0")
-    archive_folder_id = box_cfg.get("archive_folder_id", "")
-    local             = local_folder()
-
     downloaded = 0
     skipped    = 0
     errors: list[str] = []
 
     try:
-        jwt_path = _resolve_jwt_path(box_cfg)
-    except FileNotFoundError as exc:
+        client, cfg = get_box_client()
+    except Exception as exc:
         errors.append(str(exc))
         return 0, 0, errors
 
-    _emit_log(f"Connecting to Box (source folder {folder_id})…")
+    box_cfg           = cfg["box"]
+    folder_id         = box_cfg.get("folder_id", "0")
+    archive_folder_id = box_cfg.get("archive_folder_id", "")
+    local             = local_folder()
 
-    try:
-        from boxsdk import JWTAuth, Client
-        auth   = JWTAuth.from_settings_file(str(jwt_path))
-        client = Client(auth)
-    except Exception as exc:
-        errors.append(f"Box auth failed: {exc}")
-        return 0, 0, errors
+    _emit_log(f"Connecting to Box (source folder {folder_id})…")
 
     def _sync_folder(fid: str, dest, recurse: bool):
         nonlocal downloaded, skipped

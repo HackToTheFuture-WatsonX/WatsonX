@@ -86,7 +86,6 @@ def default_config() -> dict:
             "folder_id": "",
             "archive_folder_id": "",
             "output_folder_id": "",
-            "jwt_config_file": "box_jwt_config.json",
         },
         "local": {
             "local_folder": "Local Folder",

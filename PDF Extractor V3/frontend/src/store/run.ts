@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { io, Socket } from 'socket.io-client'
+import { useToastStore } from './toast'
 
 /**
  * run.ts — shared run-state for Sync / Scan / Extract.
@@ -51,6 +52,10 @@ export interface ExtractResult {
 
 interface SyncSummary { downloaded: number; skipped: number; errors: string[] }
 interface ExtractSummary { completed: number; failed: number; total: number }
+interface ScanSummary {
+  found: number; total: number; pending: number; completed: number;
+  error?: string; cancelled?: boolean
+}
 
 interface RunStore {
   // ── Sync ──
@@ -63,6 +68,7 @@ interface RunStore {
   // ── Scan ──
   scanRunning: boolean
   scanFound: number
+  scanSummary: ScanSummary | null
   startScan: () => Promise<void>
   cancelScan: () => Promise<void>
 
@@ -98,9 +104,10 @@ export const useRunStore = create<RunStore>()((set, get) => ({
   // ── Scan ──
   scanRunning: false,
   scanFound: 0,
+  scanSummary: null,
   startScan: async () => {
     if (get().scanRunning) return
-    set({ scanRunning: true, scanFound: 0 })
+    set({ scanRunning: true, scanFound: 0, scanSummary: null })
     const r = await apiPost('/api/scan/run')
     if (r?.status === 'already_running') set({ scanRunning: true })
   },
@@ -147,16 +154,21 @@ export const useRunStore = create<RunStore>()((set, get) => ({
     _socket.on('sync:done', (d: any) => {
       set({ syncRunning: false })
       if (d?.cancelled) return
-      if (d?.error) set((s) => ({ syncLogs: [...s.syncLogs, `⚠ ${d.error}`] }))
-      else set({ syncSummary: d })
+      if (d?.error) {
+        set((s) => ({ syncLogs: [...s.syncLogs, `⚠ ${d.error}`] }))
+        useToastStore.getState().show(`Sync error: ${d.error}`, 'error', 0)
+      } else {
+        set({ syncSummary: d })
+      }
     })
 
     // ── Scan events ──
     _socket.on('scan:progress', (d: { found: number }) => {
       set({ scanFound: d.found })
     })
-    _socket.on('scan:done', () => {
-      set({ scanRunning: false })
+    _socket.on('scan:done', (d: ScanSummary) => {
+      set({ scanRunning: false, scanSummary: d })
+      if (d?.error) useToastStore.getState().show(`Scan error: ${d.error}`, 'error', 0)
     })
 
     // ── Extract events ──

@@ -5,8 +5,10 @@ Ported from InsightsFrame and get_log_history (pdf_extractor_ui_v2.py lines 1177
 Logs and tracking are read from the SQLite database (see db.py) — the single
 source of truth. No filesystem log scanning.
 """
+import re as _re
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 from fastapi import APIRouter
 from tracking import load_tracking
 import db
@@ -96,3 +98,28 @@ def insights(period: str = "month"):
 def insights_logs(period: str = "week"):
     """Return plain-text log history."""
     return {"logs": get_log_history(period)}
+
+
+@router.get("/log-entries")
+def insights_log_entries(period: str = "week"):
+    """Return structured log entries as JSON for the Logs page."""
+    today  = datetime.now().date()
+    cutoff = {
+        "day":   today,
+        "week":  today - timedelta(days=today.weekday()),
+        "month": today.replace(day=1),
+        "year":  today.replace(month=1, day=1),
+    }.get(period.lower(), today)
+
+    entries = db.logs_since(cutoff)  # newest first; occurred_at is a datetime object
+    return {
+        "entries": [
+            {
+                "id":          e_id,
+                "ref_number":  e.get("ref_number") or "",
+                "occurred_at": e["occurred_at"].isoformat(timespec="seconds"),
+                "content":     e.get("content") or "",
+            }
+            for e_id, e in enumerate(entries, start=1)
+        ]
+    }

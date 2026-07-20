@@ -407,7 +407,7 @@ def _ica_send_and_stream(where: str, *, cookie, team_id, team_name, chat_id,
 
 
 _AI_SYSTEM_PROMPT = (
-    "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
+    "You are Bee, an AI assistant for the Background Check Report Automation system. "
     "You help HR staff manage background check reports processed through IBM Box.\n\n"
     "CRITICAL RULES:\n"
     "1. YOUR ONLY SOURCE OF TRUTH IS THE EXTRACTED RECORDS provided in this conversation.\n"
@@ -631,15 +631,33 @@ def trigger_extraction_for_chat() -> str:
         return f"⚠ Extraction failed: {str(exc)[:300]}"
 
 
+def _kw_match(lower: str, *keywords: str) -> bool:
+    """Word-boundary match for single words; substring for multi-word phrases.
+
+    Plain substring matching wrongly fired the extract pipeline on words like
+    "extracted"/"extraction" (and similarly for "scan"/"sync" appearing inside
+    other words). Single-word keywords are matched on word boundaries; multi-word
+    phrases keep substring matching.
+    """
+    for kw in keywords:
+        if " " in kw:
+            if kw in lower:
+                return True
+        else:
+            if _re_ai.search(r"\b" + _re_ai.escape(kw) + r"\b", lower):
+                return True
+    return False
+
+
 def route_chat_message(message: str, history: list[dict]) -> str:
     history = _sanitize_history(history)
     lower   = message.lower()
 
-    if any(kw in lower for kw in ("sync folder","sync now","sync box","sync","synchronise","synchronize")):
+    if _kw_match(lower, "sync folder","sync now","sync box","synchronise","synchronize","sync"):
         return trigger_sync_for_chat()
-    if any(kw in lower for kw in ("scan box","scan folder","check box","scan","rescan")):
+    if _kw_match(lower, "scan box","scan folder","check box","rescan","scan"):
         return trigger_scan_for_chat()
-    if any(kw in lower for kw in ("run extract","start extract","extract now","extract files","extract","process files")):
+    if _kw_match(lower, "run extract","start extract","extract now","extract files","run pipeline","process files","process reports","extract"):
         return trigger_extraction_for_chat()
     if any(kw in lower for kw in ("file status","how many files","pending files","files pending","files completed","file count")):
         db = load_tracking(); files = db.get("files", {})
@@ -720,7 +738,7 @@ def route_chat_message(message: str, history: list[dict]) -> str:
             return f"⚠ ICA error: {str(exc)[:200]}"
 
     return (
-        "Hi! I'm Detective Conan. I can help with:\n"
+        "Hi! I'm Bee. I can help with:\n"
         "• 'look up [name]'     — search extracted reports\n"
         "• 'sync'               — sync Box → Local Folder\n"
         "• 'extract'            — run extraction pipeline\n"
