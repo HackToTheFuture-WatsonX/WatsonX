@@ -67,6 +67,7 @@ export default function Settings() {
   const [jwtMsg, setJwtMsg]   = useState<TestState>(null)
   const [boxTest, setBoxTest] = useState<StreamState>(null)
   const [icaTest, setIcaTest] = useState<StreamState>(null)
+  const [icaInit, setIcaInit] = useState<StreamState>(null)
   const [icaLoginMsg, setIcaLoginMsg] = useState<TestState>(null)
   const [busy, setBusy]       = useState<string | null>(null)
 
@@ -98,6 +99,12 @@ export default function Settings() {
 
   // Close any live SSE connection when the page unmounts.
   useEffect(() => () => { esRef.current?.close(); esRef.current = null }, [])
+
+  // When an ICA Initialize run finishes successfully, refresh cfg so the
+  // "Primed for chat_id ✓" pill reflects the newly-persisted system_prompt_chat_id.
+  useEffect(() => {
+    if (icaInit?.outcome === 'ok') load()
+  }, [icaInit?.outcome])
 
   function patch<K extends keyof AppConfig>(section: K, key: string, value: any) {
     setCfg(prev => prev ? { ...prev, [section]: { ...(prev[section] as any), [key]: value } } : prev)
@@ -140,7 +147,7 @@ export default function Settings() {
     setIcaLoginMsg(null); setIcaTest(null)
     persistCfg({
       ...cfg,
-      ica: { ...cfg.ica, full_cookie: '', team_id: '', team_name: '', assistant_id: '', chat_id: '', base_url: '' },
+      ica: { ...cfg.ica, full_cookie: '', team_id: '', team_name: '', assistant_id: '', chat_id: '', base_url: '', system_prompt_chat_id: '' },
     }).finally(() => setBusy(null))
   }
   function clearPdfPassword() {
@@ -177,7 +184,7 @@ export default function Settings() {
       ...cfg,
       pdf_password: '',
       box: { ...cfg.box, folder_id: '', archive_folder_id: '', output_folder_id: '' },
-      ica: { ...cfg.ica, full_cookie: '', team_id: '', team_name: '', assistant_id: '', chat_id: '', base_url: '' },
+      ica: { ...cfg.ica, full_cookie: '', team_id: '', team_name: '', assistant_id: '', chat_id: '', base_url: '', system_prompt_chat_id: '' },
       settings: {
         ...cfg.settings,
         search_subfolders: false,
@@ -304,6 +311,18 @@ export default function Settings() {
   function testIca() {
     if (busy === 'ica') { cancelTest(); return }
     runStreamTest('/api/settings/test/ica/stream', 'ica', setIcaTest)
+  }
+
+  function initIca() {
+    if (busy === 'ica-init') { cancelTest(); return }
+    // Wipe any prior Test panel output so the two streams don't visually merge.
+    setIcaTest(null)
+    runStreamTest('/api/settings/init/ica/stream', 'ica-init', setIcaInit)
+    // Refresh cfg after init so the "Primed" pill reflects the newly-recorded
+    // system_prompt_chat_id. The SSE stream ends before this fires because
+    // finish() runs synchronously, so load() picks up the persisted value.
+    // We piggy-back on the outcome via a delayed load — the backend has already
+    // written config by the time the "done" event arrives.
   }
 
 
@@ -509,13 +528,39 @@ export default function Settings() {
             onChange={e => patch('ica', 'full_cookie', e.target.value)}
           />
         </div>
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button variant={busy === 'ica-init' ? 'danger' : 'primary'} size="sm" onClick={initIca}>
+            {busy === 'ica-init'
+              ? <><Ban size={12} /> Cancel</>
+              : <><Save size={12} /> Initialize ICA</>}
+          </Button>
           <Button variant={busy === 'ica' ? 'danger' : 'ghost'} size="sm" onClick={testIca}>
             {busy === 'ica'
               ? <><Ban size={12} /> Cancel</>
               : <><CheckCircle2 size={12} /> Test ICA</>}
           </Button>
+
+          {/* Primed-state pill. The chat is "primed" when the current chat_id
+              matches the chat_id that was last sent the bee_prompt.md content. */}
+          {cfg.ica.chat_id && (
+            cfg.ica.chat_id === cfg.ica.system_prompt_chat_id ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]
+                               bg-green/10 text-green border border-green/30">
+                <CheckCircle2 size={11} /> Primed with bee_prompt.md
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]
+                               bg-yellow-500/10 text-yellow-600 dark:text-yellow-400
+                               border border-yellow-500/30">
+                <Loader2 size={11} /> Not yet primed
+              </span>
+            )
+          )}
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            System prompt: <code>backend/prompt/bee_prompt.md</code>
+          </span>
         </div>
+        {icaInit && <StepLog stream={icaInit} />}
         {icaTest && <StepLog stream={icaTest} />}
       </Card>
 

@@ -11,10 +11,15 @@ Path resolution:
   In a packaged Electron build: it lives in the user's data dir
     (%APPDATA%/PDF Extractor V3/) — passed in via --data-dir CLI arg from main.js.
 """
+import functools
 import json
+import logging
+import sys
 from pathlib import Path
 
 import db
+
+log = logging.getLogger("config")
 
 # BASE_DIR = directory containing this file (backend/ or PyInstaller _MEIPASS)
 BASE_DIR = Path(__file__).parent.resolve()
@@ -103,6 +108,9 @@ def default_config() -> dict:
             "assistant_id": "",
             "chat_id": "",
             "base_url": "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat",
+            # chat_id that was last primed with the Bee system prompt.
+            # Written by chat.initialize_ica_system_prompt() on success.
+            "system_prompt_chat_id": "",
         },
         "settings": {
             "search_subfolders": True,
@@ -153,3 +161,44 @@ def archive_folder() -> Path:
 
 def ai_json_dir() -> Path:
     return extracted_folder() / "JSON File Extracts"
+
+
+# ── Bee system prompt loader ─────────────────────────────────────────────────
+#
+# The Bee persona/rules live in backend/prompt/bee_prompt.md — a version-
+# controlled markdown file — rather than a hardcoded string. This is the text
+# sent to ICA once, as the first PROMPT on a new chat_id, by
+# chat.initialize_ica_system_prompt().
+
+_BEE_PROMPT_REL = ("prompt", "bee_prompt.md")
+
+
+def _bee_prompt_path() -> Path:
+    """Resolve the bee_prompt.md path in dev and packaged builds.
+
+    In development the file lives next to this module (backend/prompt/…).
+    Under PyInstaller the resources are extracted to sys._MEIPASS at runtime;
+    we probe that first and fall back to the dev path if not found."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidate = Path(meipass, *_BEE_PROMPT_REL)
+        if candidate.exists():
+            return candidate
+    return Path(BASE_DIR, *_BEE_PROMPT_REL)
+
+
+@functools.lru_cache(maxsize=1)
+def bee_prompt_text() -> str:
+    """Return the Bee system prompt text, or "" if the file is missing/empty."""
+    path = _bee_prompt_path()
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        log.warning("bee_prompt.md not found at %s — ICA init will fail", path)
+        return ""
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Could not read bee_prompt.md at %s: %s", path, exc)
+        return ""
+    if not text:
+        log.warning("bee_prompt.md at %s is empty", path)
+    return text

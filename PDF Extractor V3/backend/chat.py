@@ -10,7 +10,11 @@ import urllib.parse as _urlparse
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
-from config import read_config, extracted_folder, ai_json_dir, _data_dir
+from config import (
+    read_config, read_config_safe, write_config,
+    extracted_folder, ai_json_dir, _data_dir,
+    bee_prompt_text,
+)
 from tracking import load_tracking
 from insights import get_log_history
 
@@ -406,19 +410,6 @@ def _ica_send_and_stream(where: str, *, cookie, team_id, team_name, chat_id,
 # ── ICA chat ──────────────────────────────────────────────────────────────────
 
 
-_AI_SYSTEM_PROMPT = (
-    "You are Bee, an AI assistant for the Background Check Report Automation system. "
-    "You help HR staff manage background check reports processed through IBM Box.\n\n"
-    "CRITICAL RULES:\n"
-    "1. YOUR ONLY SOURCE OF TRUTH IS THE EXTRACTED RECORDS provided in this conversation.\n"
-    "2. NEVER invent, fabricate, or hallucinate any background check report data.\n"
-    "3. If no extracted record is in context, reply: "
-    "'I can only answer from our extracted records. Please use look up [name or reference] first.'\n"
-    "4. Never simulate a lookup process or produce fake progress messages.\n"
-    "5. Never produce a formatted CONFIDENTIAL BACKGROUND CHECK REPORT unless exact data was provided.\n"
-    "Be professional, concise, and helpful."
-)
-
 _HALLUCINATION_PATTERNS = [
     r"looking\s+up\s+['\"]?.+['\"]?[\s\.]*\.\.",
     r"found\s+\d+\s+match", r"searching\s+for\s+.+\.{2,}",
@@ -554,7 +545,7 @@ def test_ica_stream():
         return
     yield {"step": "Credentials present (cookie, team ID, chat ID) ✓", "state": "ok"}
 
-    prompt = "ping — connection test"
+    prompt = "Hi Bee"
     request_summary = (
         f"POST {base_url}/chats/{chat_id}/entries\n"
         f"Headers: teamid={team_id or '(none)'}, "
@@ -583,6 +574,87 @@ def test_ica_stream():
     yield {"step": "ICA connection is working.", "state": "done",
            "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
+
+def initialize_ica_system_prompt():
+    """Yield step-by-step progress while priming the ICA chat with bee_prompt.md.
+
+    Sends the Bee system prompt as the first PROMPT to the currently configured
+    chat_id. On success, records that chat_id in config.ica.system_prompt_chat_id
+    so the UI can show "primed" and later runs can skip re-priming.
+    """
+    yield {"step": "Loading bee_prompt.md…", "state": "run"}
+    prompt = bee_prompt_text()
+    if not prompt:
+        yield {"step": "Could not load bee_prompt.md.", "state": "error",
+               "error": "bee_prompt.md is missing or empty. "
+                        "Expected at backend/prompt/bee_prompt.md."}
+        return
+    yield {"step": f"Loaded bee_prompt.md ({len(prompt)} chars) ✓", "state": "ok"}
+
+    yield {"step": "Reading ICA configuration…", "state": "run"}
+    cfg       = read_config_safe()
+    ic        = cfg.get("ica", {})
+    cookie    = (ic.get("full_cookie", "") or "").strip()
+    team_id   = ic.get("team_id", "")
+    team_name = ic.get("team_name", "")
+    chat_id   = ic.get("chat_id", "")
+    base_url  = ic.get(
+        "base_url",
+        "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat",
+    ).rstrip("/")
+
+    missing = []
+    if not cookie:  missing.append("session cookie")
+    if not team_id: missing.append("team ID")
+    if not chat_id: missing.append("chat ID")
+    if missing:
+        yield {"step": f"Missing ICA credentials: {', '.join(missing)}.",
+               "state": "error",
+               "error": f"ICA not configured — missing {', '.join(missing)}."}
+        return
+    yield {"step": "Credentials present (cookie, team ID, chat ID) ✓", "state": "ok"}
+
+    request_summary = (
+        f"POST {base_url}/chats/{chat_id}/entries\n"
+        f"Headers: teamid={team_id or '(none)'}, "
+        f"teamname={team_name or '(none)'}, "
+        f"cookie={_redact_cookie(cookie)}\n"
+        f"Body: type=PROMPT then ANSWER trigger, prompt=bee_prompt.md ({len(prompt)} chars)"
+    )
+    yield {"step": "Preparing request to ICA…", "state": "ok",
+           "detail": request_summary}
+    yield {"step": "Sending Bee system prompt to ICA…", "state": "run"}
+    try:
+        reply = _ica_send_and_stream(
+            "initialize_ica_system_prompt", cookie=cookie, team_id=team_id,
+            team_name=team_name, chat_id=chat_id, base_url=base_url,
+            prompt=prompt, timeout=180,
+        )
+    except RuntimeError as exc:
+        yield {"step": "ICA priming request failed.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    except Exception as exc:  # noqa: BLE001
+        yield {"step": "Could not reach ICA.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    yield {"step": "Bee prompt accepted by ICA ✓", "state": "ok"}
+
+    # Record which chat_id we primed so the UI can show "primed" state and skip
+    # re-priming next time. Re-read config to avoid clobbering concurrent edits.
+    try:
+        latest = read_config_safe()
+        latest.setdefault("ica", {})["system_prompt_chat_id"] = chat_id
+        write_config(latest)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Could not persist system_prompt_chat_id: %s", exc)
+        yield {"step": "Prompt sent but could not persist state.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    yield {"step": f"Marked chat_id {chat_id[:8]}… as primed ✓", "state": "ok"}
+
+    yield {"step": "ICA system prompt initialized.", "state": "done",
+           "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
 
 

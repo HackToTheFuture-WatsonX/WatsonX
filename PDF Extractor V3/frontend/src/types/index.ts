@@ -102,12 +102,13 @@ export interface AppConfig {
     auto_sync_interval_minutes: number
   }
   ica: {
-    full_cookie:  string
-    team_id:      string
-    team_name:    string
-    assistant_id: string
-    chat_id:      string
-    base_url:     string
+    full_cookie:            string
+    team_id:                string
+    team_name:              string
+    assistant_id:           string
+    chat_id:                string
+    base_url:               string
+    system_prompt_chat_id:  string
   }
   settings: {
     search_subfolders:          boolean

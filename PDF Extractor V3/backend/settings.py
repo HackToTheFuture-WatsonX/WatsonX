@@ -102,6 +102,8 @@ def get_settings():
 @router.post("")
 def save_settings(patch: ConfigPatch):
     current = read_config_safe()
+    prev_chat_id = current.get("ica", {}).get("chat_id", "")
+
     # Start from defaults so missing sections get created, then existing, then patch
     merged = default_config()
     _deep_merge(merged, current)
@@ -111,6 +113,10 @@ def save_settings(patch: ConfigPatch):
     ica = merged.get("ica", {})
     if isinstance(ica.get("full_cookie"), str):
         ica["full_cookie"] = ica["full_cookie"].strip()
+    # If chat_id changed, the previous priming is no longer valid — reset the
+    # marker so the UI shows "Not yet primed" and Initialize is required again.
+    if ica.get("chat_id", "") != prev_chat_id:
+        ica["system_prompt_chat_id"] = ""
     path = write_config(merged)
     return {"status": "saved", "path": str(path), "config": _mask_config(merged)}
 
@@ -137,6 +143,9 @@ def settings_status():
             "full_cookie": bool(ica.get("full_cookie")),
             "team_id": bool(ica.get("team_id")),
             "chat_id": bool(ica.get("chat_id")),
+            "system_prompt_chat_id": ica.get("system_prompt_chat_id", ""),
+            "primed": bool(ica.get("chat_id")) and
+                      ica.get("chat_id") == ica.get("system_prompt_chat_id"),
         },
         "pdf_password": pdf_ok,
         "ready": box_ok,  # minimum needed to sync + extract
@@ -175,7 +184,7 @@ def test_box():
 def test_ica():
     try:
         from chat import ica_chat
-        reply = ica_chat([], "ping — connection test")
+        reply = ica_chat([], "Hi Bee")
 
         return {"status": "ok", "reply_preview": (reply or "")[:120]}
     except Exception as e:  # noqa: BLE001
@@ -226,6 +235,21 @@ def test_ica_stream_endpoint():
     from chat import test_ica_stream
     return StreamingResponse(
         _stream_from(test_ica_stream),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
+
+
+@router.get("/init/ica/stream")
+def init_ica_stream_endpoint():
+    """Prime the ICA chat by sending bee_prompt.md as the first PROMPT.
+
+    Streams progress via Server-Sent Events. On success, config.ica.
+    system_prompt_chat_id is updated so the UI shows "primed" for this chat_id.
+    """
+    from chat import initialize_ica_system_prompt
+    return StreamingResponse(
+        _stream_from(initialize_ica_system_prompt),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
