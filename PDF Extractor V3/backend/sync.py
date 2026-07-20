@@ -1,7 +1,7 @@
 """
 sync.py — Box-to-local sync for PDF Extractor V3.
 Ported from sync_box_to_local (pdf_extractor_ui_v2.py lines 320–401).
-Emits SocketIO events for live log streaming.
+Emits SocketIO events for live log streaming via events.emit() (thread-safe).
 """
 import threading
 from fastapi import APIRouter
@@ -11,18 +11,17 @@ import events
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
-_sio    = None
+# Shared run-state so the frontend can rehydrate after navigating away.
 _status = {"running": False, "last": None}
-
-
-def set_sio(sio):
-    global _sio
-    _sio = sio
+_cancel = threading.Event()
 
 
 def _emit_log(msg: str):
-    if _sio:
-        _sio.emit(events.SYNC_LOG, {"message": msg})
+    events.emit(events.SYNC_LOG, {"message": msg})
+
+
+class _Cancelled(Exception):
+    """Raised internally to unwind the sync loop when the user cancels."""
 
 
 def sync_box_to_local() -> tuple[int, int, list[str]]:
@@ -30,6 +29,7 @@ def sync_box_to_local() -> tuple[int, int, list[str]]:
     Download all PDFs from Box folder_id → Local Folder.
     After each download moves source to archive_folder_id on Box.
     Returns (downloaded, skipped, errors).
+    Honors the _cancel event between items.
     """
     cfg               = read_config()
     box_cfg           = cfg["box"]
@@ -59,12 +59,16 @@ def sync_box_to_local() -> tuple[int, int, list[str]]:
 
     def _sync_folder(fid: str, dest, recurse: bool):
         nonlocal downloaded, skipped
+        if _cancel.is_set():
+            raise _Cancelled()
         try:
             items = list(client.folder(fid).get_items(limit=1000))
         except Exception as exc:
             errors.append(f"Cannot list folder {fid}: {exc}")
             return
         for item in items:
+            if _cancel.is_set():
+                raise _Cancelled()
             if item.type == "file" and item.name.lower().endswith(".pdf"):
                 local_path = dest / item.name
                 if local_path.exists():
@@ -96,26 +100,41 @@ def sync_box_to_local() -> tuple[int, int, list[str]]:
 
     search_sub = cfg.get("settings", {}).get("search_subfolders", True)
     _sync_folder(folder_id, local, search_sub)
+    # Surface each collected error in the live log so the user can see the
+    # actual reason(s), not just a count.
+    for err in errors:
+        _emit_log(f"  ⚠ {err}")
     msg = f"Sync complete — {downloaded} downloaded, {skipped} skipped, {len(errors)} error(s)."
     _emit_log(msg)
     return downloaded, skipped, errors
 
 
+
 def _sync_thread():
     _status["running"] = True
+    _cancel.clear()
     try:
         downloaded, skipped, errors = sync_box_to_local()
+        if _cancel.is_set():
+            _emit_log("Sync cancelled by user.")
+            events.emit(events.SYNC_DONE, {"cancelled": True})
+            return
         from scanner import run_scan
         run_scan()
-        if _sio:
-            _sio.emit(events.SYNC_DONE, {
-                "downloaded": downloaded, "skipped": skipped, "errors": errors
-            })
+        _status["last"] = {
+            "downloaded": downloaded, "skipped": skipped, "errors": errors,
+        }
+        events.emit(events.SYNC_DONE, {
+            "downloaded": downloaded, "skipped": skipped, "errors": errors
+        })
+    except _Cancelled:
+        _emit_log("Sync cancelled by user.")
+        events.emit(events.SYNC_DONE, {"cancelled": True})
     except Exception as exc:
-        if _sio:
-            _sio.emit(events.SYNC_DONE, {"error": str(exc)})
+        events.emit(events.SYNC_DONE, {"error": str(exc)})
     finally:
         _status["running"] = False
+        _cancel.clear()
 
 
 # ── REST endpoints ────────────────────────────────────────────────────────────
@@ -129,6 +148,15 @@ def sync_run():
     return {"status": "started"}
 
 
+@router.post("/cancel")
+def sync_cancel():
+    """Request cancellation of an in-progress sync."""
+    if not _status["running"]:
+        return {"status": "not_running"}
+    _cancel.set()
+    return {"status": "cancelling"}
+
+
 @router.get("/status")
 def sync_status():
-    return {"running": _status["running"]}
+    return {"running": _status["running"], "last": _status["last"]}

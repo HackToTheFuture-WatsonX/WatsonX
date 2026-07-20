@@ -40,13 +40,51 @@ def run(cmd: list, **kwargs):
         sys.exit(result.returncode)
 
 
+# Runtime imports the frozen backend MUST be able to satisfy. If any of these
+# are missing from the *building* interpreter (sys.executable), PyInstaller will
+# silently omit them and the shipped app fails at runtime (e.g. the Box JWT
+# connection dies with ModuleNotFoundError: boxsdk). We refuse to build in that
+# case so a broken bundle can never be produced again.
+REQUIRED_RUNTIME_MODULES = ["boxsdk", "jwt", "fastapi", "uvicorn", "socketio", "fitz"]
+
+
+def preflight_check():
+    """Verify the interpreter running this build has every runtime dependency.
+
+    The previous shipped build was produced with the WRONG interpreter (a venv
+    that had SQLAlchemy/pandas but NOT boxsdk/fastapi), so boxsdk never made it
+    into _internal/ and Box connections failed in the packaged app. Guard against
+    a recurrence."""
+    print(f"\n[0/3] Preflight: verifying build interpreter has runtime deps…")
+    print(f"  Interpreter: {sys.executable}")
+    missing = []
+    for mod in REQUIRED_RUNTIME_MODULES:
+        try:
+            __import__(mod)
+        except Exception as e:  # noqa: BLE001
+            missing.append(f"{mod} ({e})")
+    if missing:
+        print("\n  ERROR: The interpreter used for this build is missing required")
+        print("  runtime dependencies. PyInstaller would ship a BROKEN bundle.")
+        for m in missing:
+            print(f"    - {m}")
+        print("\n  Fix: build with the interpreter that has the project deps, e.g.")
+        print(f"    pip install -r requirements-build.txt")
+        print(f"    python build_backend.py   (ensure `python` resolves to that env)")
+        sys.exit(1)
+    print(f"  OK — all {len(REQUIRED_RUNTIME_MODULES)} runtime modules importable.")
+
+
 def main():
     print("=" * 60)
     print("  PDF Extractor V3 — Build Backend (PyInstaller)")
     print("=" * 60)
 
+    preflight_check()
+
     # ── Step 1: Run PyInstaller ───────────────────────────────────────────────
     print("\n[1/3] Running PyInstaller…")
+
     run([sys.executable, "-m", "PyInstaller",
          "--distpath", str(ROOT / "dist"),
          "--workpath", str(ROOT / "build"),

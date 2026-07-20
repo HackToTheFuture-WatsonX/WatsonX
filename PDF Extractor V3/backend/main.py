@@ -44,27 +44,31 @@ import db
 db.init_db()
 
 
+import asyncio
+
 import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ports import find_free_port, write_port_file
+import events
 import scanner, sync, extractor, viewer, insights, chat, settings
 
 APP_VERSION = "3.0.0"
 
 # ── SocketIO server (ASGI mode) ───────────────────────────────────────────────
-sio = socketio.Server(
+# async_mode="asgi" so the server rides the uvicorn asyncio event loop. The old
+# "threading" mode was incompatible with the ASGIApp/uvicorn combo and silently
+# dropped events emitted from background worker threads (Sync/Extract showed no
+# live progress). Worker threads now emit via events.emit(), which schedules the
+# coroutine back onto the captured loop with run_coroutine_threadsafe.
+sio = socketio.AsyncServer(
     cors_allowed_origins="*",
-    async_mode="threading",
+    async_mode="asgi",
     logger=False,
     engineio_logger=False,
 )
 
-# Inject sio into modules that emit events
-scanner.set_sio(sio)
-sync.set_sio(sio)
-extractor.set_sio(sio)
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 _fastapi = FastAPI(
@@ -91,9 +95,17 @@ _fastapi.include_router(chat.router)
 _fastapi.include_router(settings.router)
 
 
+@_fastapi.on_event("startup")
+async def _capture_loop():
+    """Capture the running uvicorn asyncio loop so worker threads can emit
+    SocketIO events thread-safely via events.emit()."""
+    events.configure(sio, asyncio.get_running_loop())
+
+
 @_fastapi.get("/api/health")
 def health():
     return {"status": "ok", "version": APP_VERSION}
+
 
 
 # ── Wrap with SocketIO ASGI middleware ────────────────────────────────────────

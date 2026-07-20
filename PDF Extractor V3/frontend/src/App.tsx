@@ -11,11 +11,19 @@ import View         from './pages/View'
 import Insights     from './pages/Insights'
 import Settings     from './pages/Settings'
 import { useChatStore } from './store/chat'
+import { useRunStore } from './store/run'
 
 export default function App() {
-  const hydrate = useChatStore((s) => s.hydrate)
+  const hydrate     = useChatStore((s) => s.hydrate)
+  const bindSocket  = useRunStore((s) => s.bindSocket)
+  const runHydrate  = useRunStore((s) => s.hydrate)
 
-  useEffect(() => { hydrate() }, [hydrate])
+  useEffect(() => {
+    hydrate()
+    bindSocket()
+    runHydrate()
+  }, [hydrate, bindSocket, runHydrate])
+
 
   return (
     <HashRouter>

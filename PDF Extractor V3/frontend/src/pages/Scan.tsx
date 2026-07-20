@@ -1,17 +1,22 @@
-import { useState, useEffect } from 'react'
-import { FolderSearch } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { FolderSearch, X } from 'lucide-react'
 import Button      from '../components/ui/Button'
 import Badge       from '../components/ui/Badge'
 import EmptyState  from '../components/ui/EmptyState'
 import Spinner     from '../components/ui/Spinner'
 import { useApi }  from '../hooks/useApi'
-import { useSocketEvent } from '../hooks/useSocket'
+import { useRunStore } from '../store/run'
 import type { ScanResult, TrackedFile } from '../types'
 
 export default function Scan() {
-  const { get, post, loading } = useApi()
-  const [data,    setData]    = useState<ScanResult | null>(null)
-  const [scanning, setScanning] = useState(false)
+  const { get }   = useApi()
+  const [data, setData] = useState<ScanResult | null>(null)
+
+  const scanning   = useRunStore((s) => s.scanRunning)
+  const scanFound  = useRunStore((s) => s.scanFound)
+  const startScan  = useRunStore((s) => s.startScan)
+  const cancelScan = useRunStore((s) => s.cancelScan)
+  const prevScanning = useRef(scanning)
 
   async function load() {
     const r = await get<ScanResult>('/api/scan/files')
@@ -20,12 +25,12 @@ export default function Scan() {
 
   useEffect(() => { load() }, [])
 
-  useSocketEvent('scan:done', () => { setScanning(false); load() })
-
-  async function handleScan() {
-    setScanning(true)
-    await post('/api/scan/run')
-  }
+  // Reload the file table whenever a scan finishes (scanning: true → false).
+  useEffect(() => {
+    if (prevScanning.current && !scanning) load()
+    prevScanning.current = scanning
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanning])
 
   return (
     <div className="p-7">
@@ -35,10 +40,18 @@ export default function Scan() {
           <h1 className="page-title">Scan Local Folder</h1>
           <p className="page-sub mt-0.5">Detect PDF files and register them for extraction</p>
         </div>
-        <Button onClick={handleScan} disabled={scanning || loading}>
-          {scanning ? <Spinner size={14} /> : <FolderSearch size={14} />}
-          {scanning ? 'Scanning…' : 'Scan Now'}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={startScan} disabled={scanning}>
+            {scanning ? <Spinner size={14} /> : <FolderSearch size={14} />}
+            {scanning ? `Scanning… (${scanFound})` : 'Scan Now'}
+          </Button>
+          {scanning && (
+            <Button variant="danger" onClick={cancelScan}>
+              <X size={14} />
+              Cancel
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats row */}

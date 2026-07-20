@@ -21,18 +21,14 @@ import events
 
 router = APIRouter(prefix="/api/extract", tags=["extract"])
 
-_sio    = None
-_status = {"running": False}
-
-
-def set_sio(sio):
-    global _sio
-    _sio = sio
+# Shared run-state so the frontend can rehydrate after navigating away.
+_status = {"running": False, "last": None}
+_cancel = threading.Event()
 
 
 def _emit(event: str, data):
-    if _sio:
-        _sio.emit(event, data)
+    events.emit(event, data)
+
 
 
 def build_extract_folder(base_dir: Path, when: datetime) -> Path:
@@ -104,8 +100,11 @@ def run_extraction() -> list[dict]:
     total   = len(pending)
 
     for idx, (rel_key, info) in enumerate(pending.items(), 1):
+        if _cancel.is_set():
+            break
         fname      = info.get("name", rel_key)
         local_path = Path(info.get("local_path", ""))
+
         if not local_path.exists():
             from config import local_folder as _lf
             local_path = _lf() / rel_key
@@ -215,16 +214,21 @@ def run_extraction() -> list[dict]:
     save_tracking(db)
     completed = sum(1 for r in results if r.get("status") == "ok")
     failed    = sum(1 for r in results if r.get("status") == "error")
-    _emit(events.EXTRACT_DONE, {"completed": completed, "failed": failed, "total": total})
+    done_payload = {"completed": completed, "failed": failed, "total": total}
+    if _cancel.is_set():
+        done_payload["cancelled"] = True
+    _emit(events.EXTRACT_DONE, done_payload)
     return results
 
 
 def _extract_thread():
     _status["running"] = True
+    _cancel.clear()
     try:
-        run_extraction()
+        _status["last"] = run_extraction()
     finally:
         _status["running"] = False
+        _cancel.clear()
 
 
 # ── REST endpoints ────────────────────────────────────────────────────────────
@@ -238,8 +242,23 @@ def extract_run():
     return {"status": "started"}
 
 
+@router.post("/cancel")
+def extract_cancel():
+    """Request cancellation of an in-progress extraction."""
+    if not _status["running"]:
+        return {"status": "not_running"}
+    _cancel.set()
+    return {"status": "cancelling"}
+
+
+@router.get("/status")
+def extract_status():
+    return {"running": _status["running"], "last": _status["last"]}
+
+
 @router.get("/results")
 def extract_results():
     """Return current tracking DB with full file details."""
     from scanner import scan_files
     return scan_files()
+

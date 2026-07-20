@@ -1,7 +1,7 @@
 """
 scanner.py — Local Folder PDF scanner for PDF Extractor V3.
 Ported from ScanFolderFrame._scan_worker (pdf_extractor_ui_v2.py lines 1108–1171).
-Exposes FastAPI router + SocketIO-emitting worker.
+Exposes FastAPI router + SocketIO-emitting worker (thread-safe via events.emit()).
 """
 import threading
 from pathlib import Path
@@ -12,23 +12,19 @@ import events
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 
-# SocketIO instance — injected by main.py after creation
-_sio = None
-
-def set_sio(sio):
-    global _sio
-    _sio = sio
+# Shared run-state so the frontend can rehydrate after navigating away.
+_status = {"running": False, "last": None}
+_cancel = threading.Event()
 
 
 def _emit(event: str, data):
-    if _sio:
-        _sio.emit(event, data)
+    events.emit(event, data)
 
 
 def run_scan() -> dict:
     """
     Walk the Local Folder, register all .pdf as Pending (skip Extracted/ Archive/).
-    Purge stale entries. Returns summary dict.
+    Purge stale entries. Returns summary dict. Honors the _cancel event.
     """
     local   = local_folder()
     ext_dir = extracted_folder()
@@ -37,6 +33,8 @@ def run_scan() -> dict:
     found   = 0
 
     for pdf_path in local.rglob("*.pdf"):
+        if _cancel.is_set():
+            break
         try:
             pdf_path.relative_to(ext_dir)
             continue
@@ -76,15 +74,22 @@ def run_scan() -> dict:
     pending   = sum(1 for f in files.values() if f.get("status") == "Pending")
     completed = sum(1 for f in files.values() if f.get("status") == "Completed")
     summary   = {"found": found, "total": len(files), "pending": pending, "completed": completed}
+    if _cancel.is_set():
+        summary["cancelled"] = True
     _emit(events.SCAN_DONE, summary)
     return summary
 
 
 def _scan_thread():
+    _status["running"] = True
+    _cancel.clear()
     try:
-        run_scan()
+        _status["last"] = run_scan()
     except Exception as exc:
         _emit(events.SCAN_DONE, {"error": str(exc)})
+    finally:
+        _status["running"] = False
+        _cancel.clear()
 
 
 # ── REST endpoints ────────────────────────────────────────────────────────────
@@ -92,8 +97,24 @@ def _scan_thread():
 @router.post("/run")
 def scan_run():
     """Trigger a scan in the background. Progress emitted via SocketIO."""
+    if _status["running"]:
+        return {"status": "already_running"}
     threading.Thread(target=_scan_thread, daemon=True).start()
     return {"status": "started"}
+
+
+@router.post("/cancel")
+def scan_cancel():
+    """Request cancellation of an in-progress scan."""
+    if not _status["running"]:
+        return {"status": "not_running"}
+    _cancel.set()
+    return {"status": "cancelling"}
+
+
+@router.get("/status")
+def scan_status():
+    return {"running": _status["running"], "last": _status["last"]}
 
 
 @router.get("/files")

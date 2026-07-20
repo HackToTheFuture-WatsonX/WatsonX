@@ -194,11 +194,17 @@ export default function Settings() {
   async function uploadJwt() {
     if (!jwtText.trim()) return
     setBusy('jwt'); setJwtMsg(null)
+    // Persist the current in-memory cfg FIRST so any unsaved folder IDs the user
+    // typed aren't discarded by the load() below. The JWT file (jwtText) lives in
+    // a separate box_jwt_config.json and separate state, so a plain load() would
+    // otherwise reset cfg to the last-saved values and wipe the user's edits.
+    if (cfg) await post<{ status: string; config: AppConfig }>('/api/settings', { config: cfg })
     const res = await post<{ status: string; error?: string }>('/api/settings/jwt', { content: jwtText })
     setBusy(null)
     if (res?.status === 'saved') { setJwtMsg({ ok: true, msg: 'JWT config saved ✓' }); setJwtText(''); load() }
     else setJwtMsg({ ok: false, msg: res?.error ?? 'Upload failed' })
   }
+
 
   // Run a streaming connection test: open an SSE connection and accumulate the
   // human-readable "step" events the backend emits so the user sees live
