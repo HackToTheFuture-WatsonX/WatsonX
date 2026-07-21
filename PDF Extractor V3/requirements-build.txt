@@ -1,0 +1,10 @@
+# requirements-build.txt — Extra packages needed only for the build process
+# Install with: pip install -r requirements-build.txt
+#
+# These are NOT needed at runtime — they are used only during:
+#   python build_backend.py  (PyInstaller packaging)
+
+pyinstaller>=6.10.0
+
+# Include all runtime deps too so a single pip install covers everything
+-r backend/requirements.txt

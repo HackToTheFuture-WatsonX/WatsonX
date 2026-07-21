@@ -1,0 +1,51 @@
+{
+  "_comment": "PDF Text Extractor V2 - Configuration TEMPLATE. Copy to config.json and fill in real values. config.json is gitignored (it holds live Box secrets + ICA session cookies).",
+  "_note": "Box API credentials are required to connect to Box Online. See README.md for setup instructions.",
+
+  "pdf_password": "<PDF_OPEN_PASSWORD>",
+
+  "box": {
+    "_help": "Create a Box App at https://app.box.com/developers/console to get these values.",
+    "client_id":        "<BOX_CLIENT_ID>",
+    "client_secret":    "<BOX_CLIENT_SECRET>",
+    "access_token":     "<BOX_ACCESS_TOKEN>",
+    "folder_id":        "<BOX_SOURCE_FOLDER_ID>",
+    "archive_folder_id":"<BOX_ARCHIVE_FOLDER_ID>",
+    "output_folder_id": "<BOX_OUTPUT_FOLDER_ID>",
+    "_folder_id_note": "folder_id = source Box folder to sync FROM. output_folder_id = Box folder to upload Extracted files TO.",
+    "jwt_config_file":  "box_jwt_config.json"
+  },
+
+  "local": {
+    "local_folder": "Local Folder",
+    "_local_folder_note": "Path (relative to this config) where Box files are synced to locally.",
+    "extracted_folder": "Local Folder/Extracted",
+    "_extracted_folder_note": "Sub-folder where all extracted output files are saved locally before being synced to Box output_folder_id.",
+    "archive_folder": "Local Folder/Archive",
+    "_archive_folder_note": "Source PDFs are moved here after successful extraction so they are not re-processed on the next scan."
+  },
+
+  "sync": {
+    "auto_sync_enabled": false,
+    "auto_sync_interval_minutes": 30,
+    "_auto_sync_note": "Set auto_sync_enabled=true to sync Box folder automatically at startup and every interval_minutes."
+  },
+
+  "ica": {
+    "_help": "IBM Consulting Advantage (ICA) 1.0 - session-cookie based API.",
+    "_auth": "Paste the ENTIRE cookie string from DevTools -> Request Headers -> cookie (all cookies, not just ica_core_auth_proxy). Use the ICA Cookie Parser tool to generate this block.",
+    "full_cookie":    "<PASTE_FULL_COOKIE_STRING>",
+    "team_id":        "<TEAM_ID>",
+    "team_name":      "<URL_ENCODED_TEAM_NAME>",
+    "assistant_id":   "9de2015e-c6af-45f1-bf7e-ce8f281ab4a8",
+    "chat_id":        "<CHAT_ID>",
+    "base_url":       "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat"
+  },
+
+  "settings": {
+    "search_subfolders": true,
+    "file_extension": ".pdf",
+    "overwrite_existing_exports": false,
+    "log_activity": true
+  }
+}
