@@ -18,6 +18,8 @@ from config import (
 from tracking import load_tracking, save_tracking
 from box_client import get_box_client, upload_file_to_box
 import events
+import audit
+
 
 router = APIRouter(prefix="/api/extract", tags=["extract"])
 
@@ -146,6 +148,12 @@ def run_extraction() -> list[dict]:
                 json_path = extractor.export_to_json(fname, structured, ref_number, False)
             finally:
                 extractor.WORD_OUT_DIR, extractor.CSV_OUT_DIR, extractor.JSON_OUT_DIR = orig
+
+            # Flatten & persist to the AuditResource table (real-time stats source).
+            try:
+                audit.flatten_and_store(structured, source_json=str(json_path))
+            except Exception as ae:
+                _emit("extract:log", {"line": f"Audit persist failed: {str(ae)[:120]}"})
 
             upload_status = ""
             if box_client and output_folder_id:

@@ -83,7 +83,90 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_logs_occurred_at
                 ON extraction_logs (occurred_at);
+
+            -- ── Audit ────────────────────────────────────────────────────────
+            -- Persisted, flattened audit row written at extraction time. This
+            -- is the real-time source of truth for the Audit page + Insights,
+            -- so stats never need to re-parse JSON files on disk.
+            CREATE TABLE IF NOT EXISTS audit_records (
+                ref_number             TEXT PRIMARY KEY,
+                candidate_name         TEXT DEFAULT '',
+                initiation_date        TEXT DEFAULT '',
+                final_report_date      TEXT DEFAULT '',
+                supplementary_report_date TEXT DEFAULT '',
+                overall_bgv_result     TEXT DEFAULT '',
+                e1                     TEXT DEFAULT '',
+                e2                     TEXT DEFAULT '',
+                e3                     TEXT DEFAULT '',
+                e4                     TEXT DEFAULT '',
+                e5                     TEXT DEFAULT '',
+                ref1                   TEXT DEFAULT '',
+                ref2                   TEXT DEFAULT '',
+                adverse_media          TEXT DEFAULT '',
+                global_sanctions       TEXT DEFAULT '',
+                bankruptcy             TEXT DEFAULT '',
+                financial_credit       TEXT DEFAULT '',
+                directorship           TEXT DEFAULT '',
+                civil_litigation       TEXT DEFAULT '',
+                professional_license   TEXT DEFAULT '',
+                social_media           TEXT DEFAULT '',
+                source_json            TEXT DEFAULT '',
+                updated_at             TEXT
+            );
+
+            -- User-editable override fields keyed by ref_number. A row here only
+            -- exists once a user has set at least one override. isCompliant here
+            -- is a manual override that wins over the derived default.
+            CREATE TABLE IF NOT EXISTS audit_overrides (
+                ref_number           TEXT PRIMARY KEY,
+                candidate_name       TEXT,
+                onboarding_date      TEXT,
+                background_check_date TEXT,
+                is_compliant         TEXT,
+                updated_at           TEXT
+            );
+
+            -- Read-only view that LEFT JOINs records + overrides and derives the
+            -- final displayed columns (incl. isCompliant). Serves the Audit page,
+            -- the Excel export, and the audit-driven Insights stats.
+            CREATE VIEW IF NOT EXISTS audit_resource AS
+            SELECT
+                r.ref_number                                        AS "S/N",
+                COALESCE(o.candidate_name, r.candidate_name)        AS "Candidate Name",
+                r.initiation_date                                   AS "Initiation Date",
+                r.final_report_date                                 AS "Final Report Sent Date",
+                r.supplementary_report_date                         AS "Supplementary Report Sent Date",
+                r.overall_bgv_result                                AS "Overall BGV Result",
+                r.e1                                                AS "E1 (most recent)",
+                r.e2                                                AS "E2",
+                r.e3                                                AS "E3",
+                r.e4                                                AS "E4",
+                r.e5                                                AS "E5",
+                r.ref1                                              AS "REF 1",
+                r.ref2                                              AS "REF 2",
+                r.adverse_media                                     AS "Adverse Media Check",
+                r.global_sanctions                                  AS "Global Sanctions",
+                r.bankruptcy                                        AS "Bankruptcy Check",
+                r.financial_credit                                  AS "Financial/Credit Check",
+                r.directorship                                      AS "Directorship Check (DTI Only)",
+                r.civil_litigation                                  AS "Civil Litigation Check",
+                r.professional_license                              AS "Professional License Qualification",
+                r.social_media                                      AS "Social Media Screening",
+                COALESCE(o.candidate_name, r.candidate_name)        AS "Name",
+                COALESCE(o.onboarding_date, '')                     AS "Onboarding Date",
+                COALESCE(o.background_check_date, r.final_report_date) AS "Background Check Date",
+                CASE
+                    WHEN o.is_compliant IS NOT NULL AND o.is_compliant != ''
+                        THEN o.is_compliant
+                    WHEN r.overall_bgv_result LIKE 'Cleared%'
+                         AND COALESCE(o.background_check_date, r.final_report_date) != ''
+                        THEN 'true'
+                    ELSE 'false'
+                END                                                 AS "isCompliant"
+            FROM audit_records r
+            LEFT JOIN audit_overrides o ON o.ref_number = r.ref_number;
             """
+
         )
         conn.commit()
         _initialized_for = path
@@ -272,7 +355,133 @@ def logs_since(cutoff_date) -> list[dict]:
     return out
 
 
+# ── Audit records / overrides / resource view ────────────────────────────────
+
+# Column order matches the audit_records table (excluding ref_number PK and
+# updated_at, which are handled explicitly).
+_AUDIT_RECORD_COLS = (
+    "candidate_name", "initiation_date", "final_report_date",
+    "supplementary_report_date", "overall_bgv_result",
+    "e1", "e2", "e3", "e4", "e5", "ref1", "ref2",
+    "adverse_media", "global_sanctions", "bankruptcy", "financial_credit",
+    "directorship", "civil_litigation", "professional_license", "social_media",
+    "source_json",
+)
+
+
+def audit_record_upsert(ref_number: str, fields: dict) -> None:
+    """Insert or replace the persisted flattened audit row for a reference.
+
+    `fields` may contain any subset of _AUDIT_RECORD_COLS; missing keys default
+    to ''. Called at extraction time (and by the backfill) so the audit_resource
+    view is always a real-time source of truth.
+    """
+    ref = (ref_number or "").strip()
+    if not ref:
+        return
+    values = [ref] + [str(fields.get(c, "") or "") for c in _AUDIT_RECORD_COLS]
+    values.append(datetime.now().isoformat(timespec="seconds"))
+    placeholders = ", ".join(["?"] * (len(_AUDIT_RECORD_COLS) + 2))
+    col_list = ", ".join(("ref_number",) + _AUDIT_RECORD_COLS + ("updated_at",))
+    conn = _connect()
+    try:
+        conn.execute(
+            f"INSERT OR REPLACE INTO audit_records ({col_list}) VALUES ({placeholders})",
+            values,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_AUDIT_OVERRIDE_COLS = (
+    "candidate_name", "onboarding_date", "background_check_date", "is_compliant",
+)
+
+
+def audit_override_upsert(ref_number: str, fields: dict) -> None:
+    """Merge user-editable override fields for a reference.
+
+    Only the keys present in `fields` are updated; others are preserved. Pass an
+    empty string to clear a field, or None to leave it untouched.
+    """
+    ref = (ref_number or "").strip()
+    if not ref:
+        return
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT candidate_name, onboarding_date, background_check_date, is_compliant "
+            "FROM audit_overrides WHERE ref_number = ?",
+            (ref,),
+        ).fetchone()
+        current = dict(row) if row else {c: None for c in _AUDIT_OVERRIDE_COLS}
+        for c in _AUDIT_OVERRIDE_COLS:
+            if c in fields and fields[c] is not None:
+                current[c] = fields[c]
+        conn.execute(
+            "INSERT OR REPLACE INTO audit_overrides "
+            "(ref_number, candidate_name, onboarding_date, background_check_date, "
+            " is_compliant, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                ref,
+                current.get("candidate_name"),
+                current.get("onboarding_date"),
+                current.get("background_check_date"),
+                current.get("is_compliant"),
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def audit_override_get(ref_number: str) -> dict | None:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT ref_number, candidate_name, onboarding_date, "
+            "background_check_date, is_compliant, updated_at "
+            "FROM audit_overrides WHERE ref_number = ?",
+            ((ref_number or "").strip(),),
+        ).fetchone()
+    finally:
+        conn.close()
+    return dict(row) if row else None
+
+
+def audit_resource_all() -> list[dict]:
+    """Return every row of the audit_resource view (labelled column names)."""
+    conn = _connect()
+    try:
+        rows = conn.execute('SELECT * FROM audit_resource ORDER BY "S/N"').fetchall()
+    finally:
+        conn.close()
+    return [dict(row) for row in rows]
+
+
+def audit_record_count() -> int:
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS n FROM audit_records").fetchone()
+        return int(row["n"])
+    finally:
+        conn.close()
+
+
+def audit_records_clear() -> None:
+    """Remove all persisted audit rows (overrides are preserved)."""
+    conn = _connect()
+    try:
+        conn.execute("DELETE FROM audit_records")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     """Explicitly initialize the schema (called from main.py after set_data_dir)."""
     conn = _connect()
     conn.close()
+

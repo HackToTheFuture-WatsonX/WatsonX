@@ -9,6 +9,7 @@ import Scan         from './pages/Scan'
 import Extract      from './pages/Extract'
 import View         from './pages/View'
 import Insights     from './pages/Insights'
+import Audit        from './pages/Audit'
 import Logs         from './pages/Logs'
 import Settings     from './pages/Settings'
 import { useChatStore } from './store/chat'
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/extract"  element={<Extract />} />
               <Route path="/view"     element={<View />} />
               <Route path="/insights" element={<Insights />} />
+              <Route path="/audit"    element={<Audit />} />
               <Route path="/logs"     element={<Logs />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

@@ -52,7 +52,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ports import find_free_port, write_port_file
 import events
-import scanner, sync, extractor, viewer, insights, chat, settings
+import scanner, sync, extractor, viewer, insights, chat, settings, audit
+import db as _db
+
 
 APP_VERSION = "3.0.0"
 
@@ -93,6 +95,7 @@ _fastapi.include_router(viewer.router)
 _fastapi.include_router(insights.router)
 _fastapi.include_router(chat.router)
 _fastapi.include_router(settings.router)
+_fastapi.include_router(audit.router)
 
 
 @_fastapi.on_event("startup")
@@ -100,6 +103,20 @@ async def _capture_loop():
     """Capture the running uvicorn asyncio loop so worker threads can emit
     SocketIO events thread-safely via events.emit()."""
     events.configure(sio, asyncio.get_running_loop())
+
+
+@_fastapi.on_event("startup")
+async def _audit_backfill():
+    """One-time backfill: if the AuditResource table is empty, populate it from
+    existing JSON extracts on disk so historical reports appear in the Audit
+    page and Insights stats immediately."""
+    try:
+        if _db.audit_record_count() == 0:
+            summary = audit.backfill_from_json()
+            print(f"[V3 Backend] Audit backfill: {summary}")
+    except Exception as exc:
+        print(f"[V3 Backend] Audit backfill failed: {exc}")
+
 
 
 @_fastapi.get("/api/health")

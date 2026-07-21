@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom'
-import { FolderSearch, RefreshCw, Cog, Eye, MessageSquare } from 'lucide-react'
+import { FolderSearch, RefreshCw, Cog, Eye, ClipboardCheck } from 'lucide-react'
 
 const CARDS = [
   { icon: FolderSearch, label: 'Scan Local Folder',    desc: 'Scan Local Folder for PDFs\nand view their status.',         to: '/scan',    color: '#6C63FF' },
   { icon: RefreshCw,    label: 'Sync Box to Local',    desc: 'Download PDFs from Box\ninto the Local Folder.',             to: '/sync',    color: '#0D9488' },
   { icon: Cog,          label: 'Extract Files',         desc: 'Run extraction and upload\noutputs to Box.',                 to: '/extract', color: '#22C55E' },
   { icon: Eye,          label: 'View Extracted Files',  desc: 'Browse extracted Word / Excel\nand JSON files by type.',    to: '/view',    color: '#F59E0B' },
-  { icon: MessageSquare,label: 'Chat with AI Assistant',desc: 'Ask questions grounded on\nextracted JSON reports.',        to: '/chat',    color: '#A78BFA' },
+  { icon: ClipboardCheck, label: 'Audit Resource',      desc: 'Master list of extracted reports\nexportable to Excel.',    to: '/audit',   color: '#A78BFA' },
 ]
 
 export default function Home() {

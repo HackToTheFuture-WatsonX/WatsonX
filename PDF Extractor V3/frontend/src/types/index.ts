@@ -89,6 +89,41 @@ export interface ChatMessage {
   content: string
 }
 
+// ── Audit (AuditResource) ────────────────────────────────────────────────────
+export type AuditRow = Record<string, string>
+
+export interface AuditListResponse {
+  columns: string[]
+  rows:    AuditRow[]
+}
+
+export interface AuditOverrideRequest {
+  ref_number:             string
+  candidate_name?:        string
+  onboarding_date?:       string
+  background_check_date?: string
+  is_compliant?:          string
+}
+
+export interface AuditStats {
+  total:                     number
+  compliant:                 number
+  non_compliant:             number
+  compliant_with_onboarding: number
+}
+
+export interface AuditOnboardingBucket {
+  period: string
+  count:  number
+}
+
+export interface AuditStatsData {
+  stats:            AuditStats
+  onboarding_chart: AuditOnboardingBucket[]
+  period:           string
+}
+
+
 export interface LinksPayload {
   header: string
   items:  ExtractResult[]

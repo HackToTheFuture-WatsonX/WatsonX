@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Home, FolderSearch, RefreshCw, Cog, Eye,
   BarChart2, ScrollText, MessageSquare, SlidersHorizontal,
-  Sun, Moon, PanelLeftClose, PanelLeftOpen,
+  ClipboardCheck, Sun, Moon, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useThemeStore } from '../store/theme'
 import { useChatStore } from '../store/chat'
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/extract',  icon: Cog,          label: 'Extract Files' },
   { to: '/view',     icon: Eye,          label: 'View Extracted Files' },
   { to: '/insights', icon: BarChart2,    label: 'Insights' },
+  { to: '/audit',    icon: ClipboardCheck, label: 'Audit Resource' },
   { to: '/logs',     icon: ScrollText,   label: 'Activity Logs' },
 ]
 
