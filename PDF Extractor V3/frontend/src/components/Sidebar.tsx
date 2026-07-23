@@ -96,8 +96,7 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
-            <div className="text-white font-bold text-sm leading-tight">BG Check</div>
-            <div className="text-accent2 text-xs">Automation  V3</div>
+            <div className="text-white font-bold text-sm leading-tight">Clear Check</div>
           </div>
         )}
       </div>

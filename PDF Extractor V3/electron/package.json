@@ -1,7 +1,7 @@
 {
   "name": "pdf-extractor-v3",
   "version": "3.0.0",
-  "description": "Background Check Report Automation V3 — Electron Desktop App",
+  "description": "Clear Check — Electron Desktop App",
   "main": "main.js",
   "scripts": {
     "start":   "electron .",

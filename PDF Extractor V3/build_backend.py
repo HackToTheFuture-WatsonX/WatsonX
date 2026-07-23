@@ -94,6 +94,24 @@ def preflight_check():
         sys.exit(1)
     print(f"  OK — all {len(REQUIRED_RUNTIME_MODULES)} runtime modules importable.")
 
+    # boxsdk swallows crypto ImportErrors and sets JWTAuth = None. If that happens
+    # in the *build* interpreter, the packaged app is guaranteed to fail Box JWT
+    # auth with "'NoneType' object has no attribute 'from_settings_dictionary'".
+    # Verify JWTAuth is a real class BEFORE building so we never ship it broken.
+    try:
+        from boxsdk import JWTAuth as _JWTAuth
+    except Exception as e:  # noqa: BLE001
+        print(f"\n  ERROR: could not import boxsdk.JWTAuth: {e}")
+        sys.exit(1)
+    if _JWTAuth is None:
+        print("\n  ERROR: boxsdk.JWTAuth is None in the build interpreter.")
+        print("  This means boxsdk's crypto extras (cryptography + PyJWT) failed to")
+        print("  import. The packaged app WILL fail Box JWT auth. Fix with:")
+        print("    pip install 'boxsdk[jwt]' cryptography PyJWT")
+        sys.exit(1)
+    print("  OK — boxsdk.JWTAuth is a real class (crypto extras present).")
+
+
 
 def main():
     print("=" * 60)

@@ -19,6 +19,66 @@ const LABEL_TO_FIELD: Record<string, keyof AuditOverrideRequest> = {
   'isCompliant':           'is_compliant',
 }
 
+// Columns rendered/edited as a calendar date (no time).
+const DATE_COLUMNS = new Set(['Onboarding Date', 'Background Check Date'])
+
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+]
+
+// Parse a stored date string into a canonical YYYY-MM-DD (what <input type="date">
+// expects). Accepts YYYY-MM-DD, DD/MM/YYYY, DD-Mmm-YYYY, DD Mmm YYYY. Returns ''
+// if the value can't be recognised as a date.
+function toIsoDate(raw: string): string {
+  const v = (raw || '').trim()
+  if (!v) return ''
+  // Already ISO (optionally with time) — keep the date part.
+  const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmy = v.match(/^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$/)
+  if (dmy) {
+    const [, d, m, y] = dmy
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  // DD-Mmm-YYYY or DD Mmm YYYY
+  const dMonY = v.match(/^(\d{1,2})[ \-]([A-Za-z]{3,})[ \-](\d{4})$/)
+  if (dMonY) {
+    const [, d, mon, y] = dMonY
+    const mi = MONTHS.findIndex((mm) => mm.toLowerCase() === mon.slice(0, 3).toLowerCase())
+    if (mi >= 0) return `${y}-${String(mi + 1).padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  return ''
+}
+
+// Format any recognised date string as DD-Mmm-YYYY for display (e.g. 21-Jul-2026).
+// Falls back to the original string if it isn't a parseable date.
+function formatDisplayDate(raw: string): string {
+  const iso = toIsoDate(raw)
+  if (!iso) return (raw || '').trim()
+  const [y, m, d] = iso.split('-')
+  const mon = MONTHS[Number(m) - 1] || m
+  return `${d}-${mon}-${y}`
+}
+
+// Value fed to <input type="datetime-local"> — a calendar+time picker whose
+// time is always pinned to midnight (YYYY-MM-DDT00:00:00). Empty if unparseable.
+function toDatetimeLocalValue(raw: string): string {
+  const iso = toIsoDate(raw)
+  return iso ? `${iso}T00:00:00` : ''
+}
+
+// Canonical stored form for a date column: YYYY-MM-DD 00:00:00. Date comes first
+// so lexical string comparison stays equivalent to chronological comparison.
+// Empty string if the value can't be parsed (lets the user clear the field).
+function toStoredDatetime(raw: string): string {
+  const iso = toIsoDate(raw)
+  return iso ? `${iso} 00:00:00` : ''
+}
+
+
+
 export default function Audit() {
   const { get, post, loading } = useApi()
   const showToast = useToastStore((s) => s.show)
@@ -51,10 +111,13 @@ export default function Audit() {
   }, [rows, query])
 
   function startEdit(rowIdx: number, col: string, current: string) {
-
     setEditKey(`${rowIdx}::${col}`)
-    setEditVal(current)
+    // Date columns feed an <input type="datetime-local"> (a calendar picker whose
+    // time is pinned to midnight), which requires a YYYY-MM-DDTHH:MM value.
+    setEditVal(DATE_COLUMNS.has(col) ? toDatetimeLocalValue(current) : current)
   }
+
+
 
   function cancelEdit() {
     setEditKey(null)
@@ -70,7 +133,8 @@ export default function Audit() {
     }
     const field = LABEL_TO_FIELD[col]
     const body: AuditOverrideRequest = { ref_number: ref }
-    ;(body as any)[field] = editVal
+    // Date columns persist as canonical YYYY-MM-DD 00:00:00; other columns save as-is.
+    ;(body as any)[field] = DATE_COLUMNS.has(col) ? toStoredDatetime(editVal) : editVal
     setBusy(true)
     const r = await post<{ status: string }>('/api/audit/override', body)
     setBusy(false)
@@ -169,6 +233,7 @@ export default function Audit() {
                   const isEditing = editKey === `${rIdx}::${col}`
                   const editable  = EDITABLE.has(col)
                   const isCompliantCol = col === 'isCompliant'
+                  const isDateCol = DATE_COLUMNS.has(col)
 
                   if (isEditing) {
                     return (
@@ -176,7 +241,10 @@ export default function Audit() {
                         <div className="flex items-center gap-1">
                           <input
                             autoFocus
+                            type={isDateCol ? 'datetime-local' : 'text'}
+                            step={isDateCol ? 1 : undefined}
                             value={editVal}
+
                             onChange={(e) => setEditVal(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') saveEdit(row, col)
@@ -186,6 +254,7 @@ export default function Audit() {
                                        bg-white dark:bg-[#0B1220] text-gray-900 dark:text-white
                                        focus:outline-none"
                           />
+
                           <button onClick={() => saveEdit(row, col)} className="text-green-600 hover:text-green-700" title="Save">
                             <Check size={13} />
                           </button>
@@ -215,7 +284,7 @@ export default function Audit() {
                             {val.toLowerCase() === 'true' ? 'Compliant' : 'Not Compliant'}
                           </span>
                         ) : (
-                          <span>{val || <span className="text-gray-300 dark:text-gray-600">—</span>}</span>
+                          <span>{(isDateCol ? formatDisplayDate(val) : val) || <span className="text-gray-300 dark:text-gray-600">—</span>}</span>
                         )}
                         {editable && (
                           <Pencil size={11} className="opacity-0 group-hover:opacity-60 text-accent shrink-0" />

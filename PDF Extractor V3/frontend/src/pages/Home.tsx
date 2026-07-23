@@ -21,7 +21,7 @@ export default function Home() {
           IBM WatsonX · Powered
         </div>
         <h1 className="text-3xl font-bold text-white leading-tight mb-2">
-          Background Check Report<br />Automation  V3
+          Clear Check
         </h1>
         <p className="text-[#7B8DB8] text-sm max-w-xl">
           Sync, scan, extract and analyze background check PDFs — powered by IBM Box

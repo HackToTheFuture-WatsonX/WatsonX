@@ -133,7 +133,24 @@ def get_box_client(box_cfg: dict) -> Client:
     import db as _db
     from boxsdk import JWTAuth
 
+    # boxsdk sets JWTAuth = None (instead of raising) when its crypto extras
+    # (`cryptography` + `PyJWT`) can't be imported — see boxsdk/auth/__init__.py.
+    # In a packaged (PyInstaller/Electron) build this happens when the native
+    # cryptography backends aren't bundled, producing the confusing runtime error
+    # "'NoneType' object has no attribute 'from_settings_dictionary'". Detect it
+    # here and raise a clear, actionable message instead.
+    if JWTAuth is None:
+        raise RuntimeError(
+            "Box JWT support is unavailable: the 'cryptography' / 'PyJWT' "
+            "dependencies failed to import (boxsdk left JWTAuth = None).\n"
+            "This usually means the packaged app is missing the cryptography "
+            "native binaries. Rebuild the backend (build_backend.py) with the "
+            "updated backend.spec, which bundles the crypto stack via "
+            "collect_all('cryptography')."
+        )
+
     jwt_dict = _db.jwt_config_get()
+
     if not jwt_dict:
         raise FileNotFoundError(
             "No Box JWT config found in the database.\n"
@@ -1070,7 +1087,7 @@ def export_to_word(file_name: str, structured: dict,
     summary = structured.get("report_summary", {})
 
     # ── Document title block ──────────────────────────────────────────────────
-    title = doc.add_heading("PDF Background Check Report", level=1)
+    title = doc.add_heading("Clear Check", level=1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(
         f"File: {file_name}    |    "

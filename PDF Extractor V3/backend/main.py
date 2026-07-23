@@ -76,7 +76,7 @@ sio = socketio.AsyncServer(
 _fastapi = FastAPI(
     title="PDF Extractor V3 API",
     version=APP_VERSION,
-    description="Background Check Report Automation V3 — FastAPI backend",
+    description="Clear Check — FastAPI backend",
 )
 
 _fastapi.add_middleware(

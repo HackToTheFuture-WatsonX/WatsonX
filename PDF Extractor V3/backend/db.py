@@ -129,7 +129,14 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
             -- Read-only view that LEFT JOINs records + overrides and derives the
             -- final displayed columns (incl. isCompliant). Serves the Audit page,
             -- the Excel export, and the audit-driven Insights stats.
-            CREATE VIEW IF NOT EXISTS audit_resource AS
+            --
+            -- Dropped + recreated on every schema init so the definition always
+            -- reflects the latest logic (e.g. the date-based compliance rule),
+            -- even on databases created before that logic existed. This is cheap
+            -- because _ensure_schema runs once per data-dir per process.
+            DROP VIEW IF EXISTS audit_resource;
+            CREATE VIEW audit_resource AS
+
             SELECT
                 r.ref_number                                        AS "S/N",
                 COALESCE(o.candidate_name, r.candidate_name)        AS "Candidate Name",
@@ -156,6 +163,15 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
                 COALESCE(o.onboarding_date, '')                     AS "Onboarding Date",
                 COALESCE(o.background_check_date, r.final_report_date) AS "Background Check Date",
                 CASE
+                    -- Rule: if both dates are set and the background check date is
+                    -- later than the onboarding date, the record is Not Compliant.
+                    -- Dates are stored canonically as YYYY-MM-DD, so lexical string
+                    -- comparison is equivalent to chronological comparison.
+                    WHEN COALESCE(o.onboarding_date, '') != ''
+                         AND COALESCE(o.background_check_date, r.final_report_date) != ''
+                         AND COALESCE(o.background_check_date, r.final_report_date)
+                             > COALESCE(o.onboarding_date, '')
+                        THEN 'false'
                     WHEN o.is_compliant IS NOT NULL AND o.is_compliant != ''
                         THEN o.is_compliant
                     WHEN r.overall_bgv_result LIKE 'Cleared%'
@@ -163,6 +179,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
                         THEN 'true'
                     ELSE 'false'
                 END                                                 AS "isCompliant"
+
             FROM audit_records r
             LEFT JOIN audit_overrides o ON o.ref_number = r.ref_number;
             """

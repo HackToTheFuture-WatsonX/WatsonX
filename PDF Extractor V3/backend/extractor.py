@@ -186,7 +186,7 @@ def run_extraction() -> list[dict]:
             })
 
             log_content = "\n".join([
-                "Background Check Report Automation V3 — Extraction Log",
+                "Clear Check — Extraction Log",
                 "=" * 60,
                 f"File       : {fname}",
                 f"Reference  : {ref_number}",

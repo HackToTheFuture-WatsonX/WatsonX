@@ -16,6 +16,23 @@ def get_box_client():
     Upload the JWT JSON on the Settings page to configure Box access.
     """
     from boxsdk import JWTAuth, Client
+
+    # boxsdk sets JWTAuth = None (instead of raising) when its crypto extras
+    # (`cryptography` + `PyJWT`) can't be imported — see boxsdk/auth/__init__.py.
+    # In a packaged (PyInstaller/Electron) build this happens when the native
+    # cryptography backends aren't bundled, producing the confusing runtime error
+    # "'NoneType' object has no attribute 'from_settings_dictionary'". Detect it
+    # here and raise a clear, actionable message instead.
+    if JWTAuth is None:
+        raise RuntimeError(
+            "Box JWT support is unavailable: the 'cryptography' / 'PyJWT' "
+            "dependencies failed to import (boxsdk left JWTAuth = None).\n"
+            "This usually means the packaged app is missing the cryptography "
+            "native binaries. Rebuild the backend (build_backend.py) with the "
+            "updated backend.spec, which bundles the crypto stack via "
+            "collect_all('cryptography')."
+        )
+
     cfg      = read_config()
     jwt_dict = db.jwt_config_get()
     if not jwt_dict:
@@ -27,6 +44,7 @@ def get_box_client():
         )
     auth = JWTAuth.from_settings_dictionary(jwt_dict)
     return Client(auth), cfg
+
 
 
 
