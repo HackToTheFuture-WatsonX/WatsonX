@@ -15,6 +15,11 @@ REM ============================================================
 
 setlocal EnableDelayedExpansion
 
+REM Always run from this script's own directory so the relative
+REM "cd frontend" / "cd electron" steps work no matter where the
+REM batch file is invoked from.
+cd /d "%~dp0"
+
 echo.
 echo ============================================================
 echo   PDF Extractor V3 - Full Portable Build

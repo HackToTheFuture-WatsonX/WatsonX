@@ -24,6 +24,13 @@ const { spawn } = require('child_process')
 // invisible. Write a startup log to a predictable location so failures can be
 // diagnosed. We use the OS temp dir because userData may not be resolvable yet.
 const LOG_FILE = path.join(os.tmpdir(), 'pdf-extractor-v3-startup.log')
+
+// Separate log file for the SPAWNED backend process. Because a packaged
+// Windows GUI app has no console, piping backend stdout into process.stdout is
+// a no-op — every request line, every scanner INFO, every Python traceback
+// disappeared into the void. Redirecting to this file makes them recoverable.
+const BACKEND_LOG_FILE = path.join(os.tmpdir(), 'pdf-extractor-v3-backend.log')
+
 function logLine(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`
   try { fs.appendFileSync(LOG_FILE, line) } catch { /**/ }
@@ -123,14 +130,32 @@ function spawnBackend(port) {
     shell: false,
   })
 
-  pythonProcess.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`))
+  // Truncate + open the backend log fresh for this launch. Append after that
+  // so the exit code lands in the same file.
+  try {
+    fs.writeFileSync(
+      BACKEND_LOG_FILE,
+      `=== backend launch @ ${new Date().toISOString()} ===\n` +
+      `cmd: ${cmd} ${args.join(' ')}\n` +
+      `cwd: ${cwd}\n\n`,
+    )
+  } catch (e) { logLine(`Could not truncate backend log: ${e && e.message}`) }
+  const backendLogStream = fs.createWriteStream(BACKEND_LOG_FILE, { flags: 'a' })
+
+  pythonProcess.stdout.on('data', (d) => {
+    try { backendLogStream.write(`[out] ${d}`) } catch { /**/ }
+    try { process.stdout.write(`[backend] ${d}`) } catch { /**/ }
+  })
   pythonProcess.stderr.on('data', (d) => {
     const text = d.toString()
     backendStderr = (backendStderr + text).slice(-4000)  // keep last 4 KB
-    process.stderr.write(`[backend] ${text}`)
+    try { backendLogStream.write(`[err] ${text}`) } catch { /**/ }
+    try { process.stderr.write(`[backend] ${text}`) } catch { /**/ }
   })
   pythonProcess.on('exit', (code) => {
     backendExited = { code }
+    const line = `\n=== backend exited with code ${code} @ ${new Date().toISOString()} ===\n`
+    try { backendLogStream.end(line) } catch { /**/ }
     console.log(`[backend] exited with code ${code}`)
   })
 
@@ -168,7 +193,7 @@ function createWindow() {
     minHeight: 640,
     title:  'PDF Extractor V3',
     backgroundColor: '#0F1117',
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     show:   true,
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
@@ -206,7 +231,6 @@ function ensureUserConfig() {
   if (!app.isPackaged) return
   const userData   = app.getPath('userData')
   const destConfig = path.join(userData, 'config.json')
-  const destJwt    = path.join(userData, 'box_jwt_config.json')
   const srcConfig  = path.join(process.resourcesPath, 'backend', 'config.json')
 
   if (!fs.existsSync(destConfig) && fs.existsSync(srcConfig)) {
@@ -214,10 +238,7 @@ function ensureUserConfig() {
     fs.copyFileSync(srcConfig, destConfig)
     console.log(`[V3] Config template copied to ${destConfig}`)
   }
-  // Create an empty jwt placeholder so users know where to place it
-  if (!fs.existsSync(destJwt)) {
-    fs.writeFileSync(destJwt, JSON.stringify({ _note: "Replace this file with your Box JWT config JSON" }, null, 2))
-  }
+  // JWT config is stored in the SQLite database — upload it via Settings page.
 }
 
 app.whenReady().then(async () => {
@@ -281,6 +302,7 @@ app.on('will-quit', () => {
 
 // ── IPC: renderer can ask for the port ───────────────────────────────────────
 ipcMain.handle('get-api-port', () => chosenPort)
+ipcMain.handle('get-backend-log-path', () => BACKEND_LOG_FILE)
 
 // ── Browser-assisted ICA login ────────────────────────────────────────────────
 // Opens a dedicated login window pointed at IBM Consulting Advantage (ICA).

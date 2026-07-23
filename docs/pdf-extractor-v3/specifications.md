@@ -163,7 +163,7 @@ This document defines the functional requirements, non-functional requirements, 
 | **Cookie (ICA)** | A browser session token captured from the ICA web app, used to authenticate API requests on behalf of the signed-in user |
 | **SocketIO** | A real-time event protocol (WebSocket-based) used by the backend to stream live progress messages to the frontend during sync, scan, and extraction |
 | **SSE / Server-Sent Events** | A one-way streaming HTTP protocol used for the Settings connection tests — the backend pushes step-by-step progress events to the browser |
-| **Detective Conan** | The name of the V3 AI assistant persona, used in the Chat page |
+| **Bee** | The name of the V3 AI assistant persona, used in the Chat page |
 | **Hallucination Guard** | A regex pattern list that checks every ICA reply for fabricated report data before displaying it to the user |
 | **PyInstaller** | A tool that packages a Python application and all its dependencies into a standalone executable (`backend.exe`) |
 | **Electron** | A framework for building desktop apps using web technologies (JavaScript, HTML, CSS). V3 uses it to bundle the React UI and manage the backend process lifecycle |

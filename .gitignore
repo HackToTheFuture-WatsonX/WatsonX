@@ -86,4 +86,5 @@ PDF Extractor V3/.v3_port
 PDF Extractor V3/electron/_asar_check/
 # Local frontend env (points at a dev port only, but keep local)
 PDF Extractor V3/frontend/.env.local
-
+*-prompt.md
+*-plan.md

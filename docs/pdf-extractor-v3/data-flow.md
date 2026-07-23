@@ -1,251 +1,204 @@
-# PDF Extractor V3 — Data Flow
+# Data Flow
 
-This document describes how data moves through PDF Extractor V3. All data stores, transformations, and external integrations are V3-specific and self-contained — V3 uses a single SQLite database as its source of truth.
+DFD (Data Flow Diagram) levels 0–2 for PDF Extractor V3. Complements [Security-Model.md](Security-Model.md) and [Compliance.md](Compliance.md) — this doc shows *what* moves; those show *what's protected*.
 
 ---
 
-## Level 0 — System Context
-
-> **Analogy:** Think of V3 as a fully automated post room. Sealed letters (encrypted PDFs) arrive in your company inbox (IBM Box). V3 opens every letter, reads it, types up a clean copy in three formats, files it in a dated cabinet, sends the copies back to headquarters, and tells an AI assistant what was in each letter so you can ask questions later.
+## Level 0 — Context Diagram
 
 ```mermaid
-flowchart LR
-    HR["👤 HR / Operations User"]
-    BOX_IN["☁️ IBM Box\nSource Folder\n(incoming PDFs)"]
-    V3["⚙️ PDF Extractor V3\nElectron Desktop App"]
-    BOX_OUT["☁️ IBM Box\nOutput + Archive Folders"]
-    EXPORTS["📁 Local Exports\n.docx · .xlsx · .json"]
-    ICA["🤖 IBM Consulting\nAdvantage (ICA)"]
+graph LR
+    User["👤 HR Operator"]
+    V3["📦 PDF Extractor V3<br/>(desktop app)"]
+    Box["☁️ IBM Box"]
+    ICA["🤖 IBM Consulting Advantage"]
 
-    HR -- "Sync · Scan · Extract\nChat · Settings" --> V3
-    BOX_IN -- "Encrypted PDF reports" --> V3
-    V3 -- "Structured exports" --> BOX_OUT
-    V3 -- "Structured exports" --> EXPORTS
-    V3 -- "Status · results" --> HR
-    EXPORTS -- "JSON report data" --> ICA
-    HR -- "Natural language queries" --> ICA
-    ICA -- "Report answers / actions" --> HR
+    User -->|"clicks & config"| V3
+    V3 -->|"Word / Excel / JSON exports"| User
+
+    Box -->|"encrypted PDFs"| V3
+    V3 -->|"exported outputs<br/>+ archived source"| Box
+
+    V3 -->|"prompt · cookie"| ICA
+    ICA -->|"answer (SSE stream)"| V3
 ```
 
----
-
-## Level 1 — Major Internal Processes & Data Stores
-
-```mermaid
-flowchart TD
-    BOX_SRC["☁️ IBM Box\nSource Folder"]
-
-    SYNC["1. Sync\nDownload PDFs from Box\nArchive originals on Box"]
-    SCAN["2. Scan\nWalk Local Folder\nRegister PDFs as Pending"]
-
-    DB[("🗄️ SQLite Database\npdf_extractor_v3.db\n─────────────────\nconfig · tracking_files\njwt_config · extraction_logs")]
-
-    EXTRACT["3. Extract\nDecrypt · Parse · Export\nUpload to Box · Archive locally"]
-
-    LOCAL_FOLDER["📁 Local Folder\n*.pdf (incoming)"]
-    EXPORTS["📁 Extracted/\nWord · Excel · JSON"]
-    ARCHIVE_LOCAL["📁 Archive/\nProcessed source PDFs"]
-
-    VIEW["4. View\nBrowse extracted files\nOpen in OS app"]
-    INSIGHTS["5. Insights\nStats + chart from DB\nLog history from DB"]
-    CHAT["6. Chat\nRoute intent\nLook up JSON files\nCall ICA if needed"]
-    SETTINGS["7. Settings\nRead/write config in DB\nStore JWT in DB\nTest Box + ICA"]
-
-    BOX_SRC -->|"PDF bytes"| SYNC
-    SYNC -->|"Save file"| LOCAL_FOLDER
-    SYNC -->|"Trigger after download"| SCAN
-    SCAN -->|"Register + purge rows"| DB
-    DB -->|"Pending file list"| EXTRACT
-    EXTRACT -->|"Read PDF"| LOCAL_FOLDER
-    EXTRACT -->|"Write Word · Excel · JSON"| EXPORTS
-    EXTRACT -->|"Move source PDF"| ARCHIVE_LOCAL
-    EXTRACT -->|"Update status · write log"| DB
-    EXPORTS -->|"Show files"| VIEW
-    DB -->|"tracking_files rows"| INSIGHTS
-    DB -->|"extraction_logs rows"| INSIGHTS
-    EXPORTS -->|"JSON files for lookup"| CHAT
-    DB -->|"tracking counts"| CHAT
-    DB -->|"Read / write config"| SETTINGS
-    DB -->|"Read / write JWT"| SETTINGS
-```
+Three external actors: the user, IBM Box, and IBM Consulting Advantage.
 
 ---
 
-## Level 2 — Extract Process Detail
-
-The Extract step is the most complex — a multi-stage pipeline per PDF file.
+## Level 1 — Major Data Stores
 
 ```mermaid
-flowchart TD
-    PENDING["Pending PDFs\nfrom tracking_files table"]
+graph TB
+    User
 
-    DECRYPT["open_and_decrypt_pdf()\nPyMuPDF + pdf_password\nUnlock + open document"]
-
-    EXTRACT_PAGES["extract_text_by_page()\nDump plain text per page\nStrip footer noise"]
-
-    PARSE["build_structured_json()\nRoute pages to specialist parsers"]
-
-    subgraph "Page Routing"
-        P0["Cover page (page 0)\nparse_summary_page()\nSubject · status · case ref\nSummary verdict table"]
-        EMP["Employment Check pages\nparse_employment_check()\nEmployer · dates · result · respondent"]
-        REF["Reference Check pages\nparse_reference_check()\nReferee · Q&A pairs · result"]
-        DB_CHECKS["Database Check pages\nparse_other_checks()\nAdverse Media · Sanctions\nBankruptcy · Credit · etc."]
+    subgraph Store["Local Data Store — %APPDATA%\\PDF Extractor V3\\"]
+        DB[("pdf_extractor_v3.db<br/>config · tracking · JWT · logs")]
+        LocalFolder["📁 Local Folder\\<br/>synced PDFs"]
+        Extracted["📄 Local Folder\\Extracted\\<br/>Word · Excel · JSON"]
+        Archive["📁 Local Folder\\Archive\\<br/>post-extraction source"]
     end
 
-    XREF["Cross-reference\nSummary verdicts → detail sections"]
-    STRUCTURED["Structured JSON document\n{report_summary, employment_checks,\nprofessional_reference_checks,\nother_checks}"]
+    subgraph V3["V3 Application"]
+        Sync["🔄 Sync"]
+        Scan["🔍 Scan"]
+        Upload["⬆️ Upload"]
+        Extract["⚙️ Extract"]
+        View["👁 View"]
+        Chat["💬 Chat"]
+        Settings["⚙️ Settings"]
+    end
 
-    WORD["export_to_word()\n→ .docx"]
-    EXCEL["export_to_csv()\n→ .xlsx"]
-    JSON["export_to_json()\n→ .json"]
+    Box["☁️ IBM Box"]
+    ICA["🤖 ICA"]
 
-    UPLOAD["upload_file_to_box()\nMirror folder hierarchy on Box\nCreate subfolders if needed"]
-    ARCHIVE["Move source PDF\nto Archive/"]
-    LOG["db.log_add()\nWrite extraction log\nto extraction_logs table"]
-    UPDATE_DB["db.tracking_replace_all()\nstatus = Completed\nref_number · last_extracted\narchive_path"]
+    User -->|"credentials"| Settings --> DB
+    User -->|"trigger"| Sync
+    User -->|"picked files"| Upload
+    User -->|"trigger"| Extract
+    User -->|"free-form message"| Chat
+    User -->|"open"| View
 
-    PENDING --> DECRYPT
-    DECRYPT --> EXTRACT_PAGES
-    EXTRACT_PAGES --> PARSE
-    PARSE --> P0
-    PARSE --> EMP
-    PARSE --> REF
-    PARSE --> DB_CHECKS
-    P0 & EMP & REF & DB_CHECKS --> XREF
-    XREF --> STRUCTURED
-    STRUCTURED --> WORD
-    STRUCTURED --> EXCEL
-    STRUCTURED --> JSON
-    WORD & EXCEL & JSON --> UPLOAD
-    WORD & EXCEL & JSON --> ARCHIVE
-    WORD & EXCEL & JSON --> LOG
-    LOG --> UPDATE_DB
+    Sync <-->|"list + download"| Box
+    Sync -->|"write file"| LocalFolder
+    Sync -->|"archive-move"| Box
+    Sync -->|"activity row"| DB
+
+    Upload -->|"write file"| LocalFolder
+    Upload -->|"tracking row + activity row"| DB
+
+    Scan -->|"tracking upsert"| DB
+
+    Extract -->|"read PDF"| LocalFolder
+    Extract -->|"write exports"| Extracted
+    Extract -->|"upload exports (optional)"| Box
+    Extract -->|"move source"| Archive
+    Extract -->|"tracking + activity"| DB
+
+    View -->|"open file"| Extracted
+
+    Chat -->|"read tracking / DB"| DB
+    Chat -->|"read JSON"| Extracted
+    Chat <-->|"prompt / answer"| ICA
+    Chat -->|"activity"| DB
 ```
+
+Stores:
+
+| Store | Contents | Persistence |
+|---|---|---|
+| `pdf_extractor_v3.db` | Config, tracking, JWT, activity log (see [Database-Schema.md](Database-Schema.md)) | SQLite, WAL journal, backed by disk |
+| `Local Folder\` | Synced source PDFs before extraction | NTFS files |
+| `Local Folder\Extracted\` | Word/Excel/JSON exports in a dated hierarchy | NTFS files |
+| `Local Folder\Archive\` | Post-extraction source PDFs | NTFS files |
 
 ---
 
-## Level 2 — Chat Intent Routing
-
-How a user message becomes a response.
+## Level 2 — Extraction Pipeline
 
 ```mermaid
-flowchart TD
-    MSG["Incoming message\n+ conversation history"]
-    SANITIZE["_sanitize_history()\nReplace hallucinated assistant turns\nwith safe fallback text"]
+graph LR
+    Src["📄 Encrypted PDF<br/>in Local Folder\\"]
 
-    KW{Keyword\nmatch?}
+    Decrypt["1️⃣ Decrypt<br/>PyMuPDF + password"]
+    Text["2️⃣ Extract text<br/>per page"]
+    Parse["3️⃣ Structured JSON<br/>report_summary · employment_checks · references · other_checks"]
+    Ref["4️⃣ Derive ref_number<br/>case_reference OR filename stem"]
 
-    SYNC_H["trigger_sync_for_chat()\n→ sync_box_to_local()\nReturns download summary"]
-    SCAN_H["trigger_scan_for_chat()\n→ run_scan()\nReturns count summary"]
-    EXTRACT_H["trigger_extraction_for_chat()\n→ run_extraction()\nReturns LINKS payload"]
-    STATUS_H["load_tracking() from DB\nReturns Pending / Completed counts"]
-    LOGS_H["get_log_history(period)\ndb.logs_since() → DB query\nReturns formatted log text"]
-    LOOKUP_H["skill_lookup_report()\nrglob JSON File Extracts/\nName/ref matching\nFormats report block"]
-    GEN_H["_find_report_files()\nMatch → pick file type\nos.startfile() to open"]
-    ICA_H["ica_chat()\nPOST to ICA API\nPoll for ANSWER entry\nHallucination check"]
-    HELP["Return help menu\n(ICA not configured)"]
+    subgraph Exports["5️⃣ Emit outputs — dated hierarchy"]
+        Word[".docx via python-docx"]
+        Excel[".xlsx via openpyxl"]
+        JSON[".json via json.dump"]
+    end
 
-    MSG --> SANITIZE
-    SANITIZE --> KW
-    KW -- sync --> SYNC_H
-    KW -- scan --> SCAN_H
-    KW -- extract --> EXTRACT_H
-    KW -- file status --> STATUS_H
-    KW -- logs --> LOGS_H
-    KW -- look up / find --> LOOKUP_H
-    KW -- generate report --> GEN_H
-    KW -- "no match + ICA configured" --> ICA_H
-    KW -- "no match + ICA not configured" --> HELP
+    BoxUp["6️⃣ Box upload<br/>(if output_folder_id set)"]
+    Move["7️⃣ Move source<br/>to Archive/"]
+    DB[("8️⃣ Update tracking<br/>+ write activity log")]
+
+    Src --> Decrypt --> Text --> Parse --> Ref --> Exports
+    Exports --> BoxUp
+    Exports --> Move
+    Src -.identity.-> Move
+    Move --> DB
+    BoxUp --> DB
 ```
 
----
-
-## Data Inputs and Outputs
-
-### Inputs
-
-| Source | Format | What It Contains |
-|---|---|---|
-| IBM Box source folder | Encrypted PDF | Background check report — cover page + section detail pages |
-| `config` DB table | JSON (per section) | Box credentials, PDF password, ICA session, folder paths, settings |
-| `jwt_config` DB table | JSON | Box JWT service-account key material |
-| User interactions | Button click / chat message | Sync trigger, extract trigger, AI query |
-
-### Data Stores
-
-| Store | Type | Updated By | Read By |
-|---|---|---|---|
-| `config` table | SQLite | Settings page (`POST /api/settings`) | All modules via `config.read_config()` |
-| `tracking_files` table | SQLite | Scanner, Extractor | Scanner, Extractor, Insights, Chat |
-| `jwt_config` table | SQLite | Settings page (`POST /api/settings/jwt`) | `box_client.get_box_client()` |
-| `extraction_logs` table | SQLite | Extractor (`db.log_add()`) | Insights (`db.logs_since()`), Chat |
-| `Local Folder/Extracted/` | `.docx` `.xlsx` `.json` files | Extractor | View page, Chat (`skill_lookup_report`), users |
-| `Local Folder/Archive/` | `.pdf` files | Extractor (move after success) | View page |
-| IBM Box output folder | `.docx` `.xlsx` `.json` | Extractor (upload) | External consumers, auditors |
-
-### Outputs
-
-| Output | Format | Destination | Consumer |
-|---|---|---|---|
-| Structured report | `.json` | Local Extracted/ + Box | AI assistant, integrations |
-| Formatted report | `.docx` | Local Extracted/ + Box | HR reviewers, auditors |
-| Tabular report | `.xlsx` | Local Extracted/ + Box | Data analysis, reporting |
-| Extraction log | `extraction_logs` row | SQLite DB | Insights logs view, Chat `logs` command |
-| Status update | `tracking_files` row | SQLite DB | Next scan / extract / insights / chat cycle |
+Every step is idempotent given the same inputs: re-running Extract over a partial file re-produces the same outputs (subject to filename collision suffixing) and rewrites the same tracking row.
 
 ---
 
-## Structured JSON Output Schema
+## Level 2 — Chat Data Flow
 
-The core transformation takes an unstructured PDF text dump and produces this document stored as a `.json` file on disk (and searchable by the Chat assistant):
+```mermaid
+graph TB
+    User["User message"]
+    Router["route_chat_message"]
 
-```json
-{
-  "source_file": "RN-123456_789_10.pdf",
-  "extracted_at": "2026-07-10T14:23:03",
-  "total_pages": 12,
-  "report_summary": {
-    "subject_name": "Smith, John",
-    "overall_status": "Cleared",
-    "case_reference": "RN-123456_789_10",
-    "case_received": "2026-06-15",
-    "package": "Standard",
-    "delivery_date": "2026-07-08",
-    "employment_check_summary": [
-      { "employer": "Acme Corp", "result": "Verified – Clear", "status": "Cleared" }
-    ],
-    "professional_reference_summary": [],
-    "database_check_summary": [
-      { "check": "Adverse Media Check", "result": "No Adverse", "status": "Cleared" }
-    ]
-  },
-  "employment_checks": [
-    {
-      "check_number": 1,
-      "employer_name": "Acme Corp",
-      "position_title": "Software Engineer",
-      "dates_of_employment": "Jan 2020 – Dec 2023",
-      "verification_status": "Cleared",
-      "result": "Verified – Clear",
-      "notes": ""
-    }
-  ],
-  "professional_reference_checks": [],
-  "other_checks": [
-    { "check_name": "Adverse Media Check", "status": "Cleared", "source": "...", "result": "No Adverse" },
-    { "check_name": "Global Sanctions",    "status": "Cleared" }
-  ]
-}
+    subgraph Local["Local Skills — no network"]
+        LookUp["skill_lookup_report<br/>reads JSON exports"]
+        OpenReport["_skill_open_report<br/>os.startfile"]
+        ListAll["_skill_list_all_reports"]
+        TriggerSync["trigger_sync_for_chat"]
+        TriggerScan["trigger_scan_for_chat"]
+        TriggerExtract["trigger_extraction_for_chat"]
+        FileStatus["file status → tracking DB"]
+        LogHistory["logs → activity DB"]
+    end
+
+    ICAPath["_ica_send_and_stream<br/>Two-POST flow"]
+    Guard["_is_hallucinated_reply<br/>refuse fabricated content"]
+
+    User --> Router
+    Router -->|"regex match"| Local
+    Router -->|"else"| ICAPath
+    ICAPath --> Guard
+    Local --> Reply["📩 Reply → user"]
+    Guard -->|"pass"| Reply
+    Guard -->|"fail"| RefuseMsg["Canned refusal"]
+    RefuseMsg --> Reply
 ```
 
+Local skills never call the network. The hallucination guard is applied only to ICA replies (local skills return structured content from our own JSON extracts).
+
 ---
 
-## Status Values
+## Data Categories
 
-The extraction engine uses exactly three status values. Ambiguity always defaults to `--`.
-
-| Value | Meaning | Example Match |
+| Category | Examples | Where it lives |
 |---|---|---|
-| `Cleared` | Positive verification | "Verified – Clear", "No Adverse", "No Civil Case" |
-| `Not Cleared` | Negative result | "Not Verified", "Red Flag", "Unverified" |
-| `--` | Unknown / inconclusive | No keyword found — safe default, never a guess |
+| **Auth material** | Box JWT, ICA cookie, PDF password | `pdf_extractor_v3.db` (masked at API boundary) |
+| **Domain identifiers** | Box folder IDs, ICA team_id, chat_id | `pdf_extractor_v3.db` (unmasked) |
+| **PII (subject data)** | Names, references, employment history from parsed reports | `pdf_extractor_v3.db` (tracking, activity), `Local Folder\Extracted\` |
+| **Source documents** | Vendor PDFs | `Local Folder\` before extraction; `Local Folder\Archive\` after |
+| **Operational telemetry** | Sync/scan/extract counts, timestamps | `extraction_logs` table + backend log |
+| **Chat transcripts** | Local skill responses; ICA prompt/answer pairs | Frontend Zustand store (localStorage-persisted); NOT persisted server-side |
+
+---
+
+## Cross-boundary Data Movement
+
+| Movement | Direction | Contents | Transport |
+|---|---|---|---|
+| Box source → V3 | in | Encrypted PDFs | HTTPS, `boxsdk` |
+| V3 → Box archive | out | The same PDFs (Box-side move) | HTTPS, `boxsdk` |
+| V3 → Box output | out | Exports mirroring the dated hierarchy | HTTPS, `boxsdk` |
+| V3 → ICA | out | User message (or `bee_prompt.md`), auth cookie | HTTPS |
+| ICA → V3 | in | Streamed answer chunks | HTTPS SSE |
+| User → V3 | in | Clicks, form data, chat messages | Local UI |
+| V3 → User | out | Renders, downloads, opened files | Local UI |
+
+---
+
+## Retention
+
+See [Data-Retention.md](Data-Retention.md) for per-category policy.
+
+---
+
+## Related
+
+- [Database-Schema.md](Database-Schema.md) — table shape
+- [Security-Model.md](Security-Model.md) — trust boundaries around this flow
+- [Compliance.md](Compliance.md) — regulatory framing
+- [Audit-Logs.md](Audit-Logs.md) — how log rows are structured

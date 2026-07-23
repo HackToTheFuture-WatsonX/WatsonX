@@ -127,28 +127,39 @@ def get_box_client(box_cfg: dict) -> Client:
     """
     Build and return an authenticated Box SDK Client using JWT (Service Account).
 
-    Reads credentials from the file pointed to by box_cfg['jwt_config_file']
-    (path relative to this script's directory or the web-app folder).
-    JWT tokens are issued and rotated automatically — no manual refresh needed.
+    Reads the JWT service-account JSON exclusively from the SQLite database
+    (single source of truth). JWT tokens are issued and rotated automatically.
     """
+    import db as _db
     from boxsdk import JWTAuth
 
-    # Resolve the JWT config file path
-    jwt_filename = box_cfg.get("jwt_config_file", "box_jwt_config.json")
-    candidates = [
-        Path(__file__).parent / jwt_filename,                          # sibling of extractor
-        Path(__file__).parent.parent / "WatsonX Challenge - Web" / jwt_filename,  # web-app folder
-        Path(__file__).parent / ".." / "WatsonX Challenge - Web" / jwt_filename,
-    ]
-    jwt_path = next((p.resolve() for p in candidates if p.exists()), None)
-    if jwt_path is None:
-        raise FileNotFoundError(
-            f"Box JWT config file '{jwt_filename}' not found.\n"
-            f"Looked in: {[str(p.resolve()) for p in candidates]}"
+    # boxsdk sets JWTAuth = None (instead of raising) when its crypto extras
+    # (`cryptography` + `PyJWT`) can't be imported — see boxsdk/auth/__init__.py.
+    # In a packaged (PyInstaller/Electron) build this happens when the native
+    # cryptography backends aren't bundled, producing the confusing runtime error
+    # "'NoneType' object has no attribute 'from_settings_dictionary'". Detect it
+    # here and raise a clear, actionable message instead.
+    if JWTAuth is None:
+        raise RuntimeError(
+            "Box JWT support is unavailable: the 'cryptography' / 'PyJWT' "
+            "dependencies failed to import (boxsdk left JWTAuth = None).\n"
+            "This usually means the packaged app is missing the cryptography "
+            "native binaries. Rebuild the backend (build_backend.py) with the "
+            "updated backend.spec, which bundles the crypto stack via "
+            "collect_all('cryptography')."
         )
 
-    log.info("Box: authenticating with JWT from %s", jwt_path)
-    auth   = JWTAuth.from_settings_file(str(jwt_path))
+    jwt_dict = _db.jwt_config_get()
+
+    if not jwt_dict:
+        raise FileNotFoundError(
+            "No Box JWT config found in the database.\n"
+            "Upload it on the Settings page (Settings → Box JWT Config).\n"
+            "Download it from app.box.com/developers/console → your app → "
+            "Configuration → App Settings → Generate a Public/Private Keypair."
+        )
+    log.info("Box: authenticating with JWT from database.")
+    auth   = JWTAuth.from_settings_dictionary(jwt_dict)
     client = Client(auth)
     log.info("Box client ready (JWT / Service Account).")
     return client
@@ -1076,7 +1087,7 @@ def export_to_word(file_name: str, structured: dict,
     summary = structured.get("report_summary", {})
 
     # ── Document title block ──────────────────────────────────────────────────
-    title = doc.add_heading("PDF Background Check Report", level=1)
+    title = doc.add_heading("Clear Check", level=1)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(
         f"File: {file_name}    |    "

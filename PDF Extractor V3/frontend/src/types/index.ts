@@ -16,6 +16,17 @@ export interface ScanResult {
   completed: number
 }
 
+export interface UploadResult {
+  uploaded: { name: string; key: string }[]
+  skipped:  { name: string; reason: string; key: string }[]
+  errors:   { name: string; error: string }[]
+  totals: {
+    total:     number
+    pending:   number
+    completed: number
+  }
+}
+
 export interface ExtractResult {
   status:  'ok' | 'error'
   fname:   string
@@ -46,6 +57,15 @@ export interface ViewSection {
   groups: ViewGroup[]
 }
 
+export interface ViewRow {
+  name:     string   // base name without extension
+  ref:      string
+  word:     string   // path to .docx (or "" if absent)
+  excel:    string   // path to .xlsx (or "" if absent)
+  json:     string   // path to .json (or "" if absent)
+  datetime: string   // "YYYY-MM-DD HH:MM"
+}
+
 export interface InsightsStats {
   total:     number
   completed: number
@@ -68,6 +88,41 @@ export interface ChatMessage {
   role:    'user' | 'assistant' | 'system'
   content: string
 }
+
+// ── Audit (AuditResource) ────────────────────────────────────────────────────
+export type AuditRow = Record<string, string>
+
+export interface AuditListResponse {
+  columns: string[]
+  rows:    AuditRow[]
+}
+
+export interface AuditOverrideRequest {
+  ref_number:             string
+  candidate_name?:        string
+  onboarding_date?:       string
+  background_check_date?: string
+  is_compliant?:          string
+}
+
+export interface AuditStats {
+  total:                     number
+  compliant:                 number
+  non_compliant:             number
+  compliant_with_onboarding: number
+}
+
+export interface AuditOnboardingBucket {
+  period: string
+  count:  number
+}
+
+export interface AuditStatsData {
+  stats:            AuditStats
+  onboarding_chart: AuditOnboardingBucket[]
+  period:           string
+}
+
 
 export interface LinksPayload {
   header: string
@@ -93,12 +148,13 @@ export interface AppConfig {
     auto_sync_interval_minutes: number
   }
   ica: {
-    full_cookie:  string
-    team_id:      string
-    team_name:    string
-    assistant_id: string
-    chat_id:      string
-    base_url:     string
+    full_cookie:            string
+    team_id:                string
+    team_name:              string
+    assistant_id:           string
+    chat_id:                string
+    base_url:               string
+    system_prompt_chat_id:  string
   }
   settings: {
     search_subfolders:          boolean
@@ -134,6 +190,17 @@ declare global {
     electronAPI?: ElectronAPI
     __V3_API_PORT__?: number
   }
+}
+
+export interface LogEntry {
+  id:          number
+  ref_number:  string
+  occurred_at: string   // ISO 8601, e.g. "2024-01-15T09:32:00"
+  content:     string
+}
+
+export interface LogsResponse {
+  entries: LogEntry[]
 }
 
 export interface SettingsStatus {

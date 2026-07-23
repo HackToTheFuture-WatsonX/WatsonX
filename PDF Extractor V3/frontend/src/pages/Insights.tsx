@@ -6,21 +6,27 @@ import {
 import Button    from '../components/ui/Button'
 import Spinner   from '../components/ui/Spinner'
 import { useApi } from '../hooks/useApi'
-import type { InsightsData } from '../types'
+import type { InsightsData, AuditStatsData } from '../types'
 
 const PERIODS = ['day', 'week', 'month', 'year'] as const
 
 export default function Insights() {
   const { get, loading } = useApi()
   const [data,   setData]   = useState<InsightsData | null>(null)
+  const [audit,  setAudit]  = useState<AuditStatsData | null>(null)
   const [period, setPeriod] = useState<string>('month')
 
   async function load(p: string) {
-    const r = await get<InsightsData>(`/api/insights?period=${p}`)
-    if (r) setData(r)
+    const [ins, aud] = await Promise.all([
+      get<InsightsData>(`/api/insights?period=${p}`),
+      get<AuditStatsData>(`/api/audit/stats?period=${p}`),
+    ])
+    if (ins) setData(ins)
+    if (aud) setAudit(aud)
   }
 
   useEffect(() => { load(period) }, [period])
+
 
   return (
     <div className="p-7 max-w-5xl">
@@ -80,6 +86,54 @@ export default function Insights() {
           </div>
         </>
       )}
+
+      {/* ── Audit / Compliance insights ─────────────────────────────────── */}
+      {audit && (
+        <>
+          <div className="flex items-center gap-3 mt-8 mb-4">
+            <span className="section-label">Compliance &amp; Onboarding</span>
+            <div className="flex-1 h-px bg-border-light dark:bg-border-dark" />
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            {[
+              { label: 'Audited Records',          value: audit.stats.total,                     color: '#6C63FF' },
+              { label: 'Compliant',                value: audit.stats.compliant,                 color: '#22C55E' },
+              { label: 'Not Compliant',            value: audit.stats.non_compliant,             color: '#EF4444' },
+              { label: 'Compliant · Onboarded',    value: audit.stats.compliant_with_onboarding, color: '#0D9488' },
+            ].map(s => (
+              <div key={s.label} className="card p-5">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{s.label}</p>
+                <p className="text-3xl font-bold" style={{ color: s.color }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Onboarding-over-time chart */}
+          <div className="card p-5">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+              Onboarding by {period}
+            </p>
+            {audit.onboarding_chart.length === 0 ? (
+              <p className="text-xs text-gray-400 py-10 text-center">
+                No onboarding dates recorded yet.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={audit.onboarding_chart} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E4E7EF" />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="count" name="Onboarded" fill="#6C63FF" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
+

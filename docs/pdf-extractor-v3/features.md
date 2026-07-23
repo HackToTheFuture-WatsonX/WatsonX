@@ -213,12 +213,12 @@ flowchart LR
 
 ## 6. AI Chat Assistant
 
-**What it does:** Provides a conversational interface ("Detective Conan") that can look up report data from extracted JSON files, trigger operations (sync, scan, extract), return file status and log history, and forward general questions to IBM Consulting Advantage (ICA).
+**What it does:** Provides a conversational interface ("Bee") that can look up report data from extracted JSON files, trigger operations (sync, scan, extract), return file status and log history, and forward general questions to IBM Consulting Advantage (ICA).
 
 **Why it exists:** Rather than navigating between pages, users can ask in plain language — "What's John Smith's status?" or "Extract now" — and get immediate structured answers.
 
 ### Simple Explanation
-Detective Conan is a knowledgeable colleague who has read every extracted JSON report. Ask him anything. He looks things up directly, runs operations for you, or escalates to IBM's AI for open-ended questions.
+Bee is a knowledgeable colleague who has read every extracted JSON report. Ask him anything. He looks things up directly, runs operations for you, or escalates to IBM's AI for open-ended questions.
 
 ### Intent Routing (priority order)
 

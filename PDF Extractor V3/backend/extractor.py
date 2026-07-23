@@ -18,21 +18,19 @@ from config import (
 from tracking import load_tracking, save_tracking
 from box_client import get_box_client, upload_file_to_box
 import events
+import audit
+
 
 router = APIRouter(prefix="/api/extract", tags=["extract"])
 
-_sio    = None
-_status = {"running": False}
-
-
-def set_sio(sio):
-    global _sio
-    _sio = sio
+# Shared run-state so the frontend can rehydrate after navigating away.
+_status = {"running": False, "last": None}
+_cancel = threading.Event()
 
 
 def _emit(event: str, data):
-    if _sio:
-        _sio.emit(event, data)
+    events.emit(event, data)
+
 
 
 def build_extract_folder(base_dir: Path, when: datetime) -> Path:
@@ -48,12 +46,16 @@ def build_extract_folder(base_dir: Path, when: datetime) -> Path:
     return folder
 
 
-def write_extraction_log(ref_number: str, when: datetime, content: str) -> int:
-    """Persist an extraction log entry to the database (single source of truth).
-    Returns the new log row id."""
-    import db
+def write_extraction_log(ref_number: str, when: datetime, content: str) -> None:
+    """Persist an extraction log entry via the shared activity helper.
+
+    Routing through activity.write ensures the settings.log_activity toggle
+    applies consistently across all transactions (sync, scan, upload, extract,
+    ICA/Box tests, settings save, etc.) instead of extraction bypassing it.
+    """
+    import activity
     safe_ref = (ref_number or "").strip() or "UNKNOWN_REF"
-    return db.log_add(safe_ref, when, content)
+    activity.write(safe_ref, content, when=when)
 
 
 
@@ -104,8 +106,11 @@ def run_extraction() -> list[dict]:
     total   = len(pending)
 
     for idx, (rel_key, info) in enumerate(pending.items(), 1):
+        if _cancel.is_set():
+            break
         fname      = info.get("name", rel_key)
         local_path = Path(info.get("local_path", ""))
+
         if not local_path.exists():
             from config import local_folder as _lf
             local_path = _lf() / rel_key
@@ -144,6 +149,12 @@ def run_extraction() -> list[dict]:
             finally:
                 extractor.WORD_OUT_DIR, extractor.CSV_OUT_DIR, extractor.JSON_OUT_DIR = orig
 
+            # Flatten & persist to the AuditResource table (real-time stats source).
+            try:
+                audit.flatten_and_store(structured, source_json=str(json_path))
+            except Exception as ae:
+                _emit("extract:log", {"line": f"Audit persist failed: {str(ae)[:120]}"})
+
             upload_status = ""
             if box_client and output_folder_id:
                 try:
@@ -175,7 +186,7 @@ def run_extraction() -> list[dict]:
             })
 
             log_content = "\n".join([
-                "Background Check Report Automation V3 — Extraction Log",
+                "Clear Check — Extraction Log",
                 "=" * 60,
                 f"File       : {fname}",
                 f"Reference  : {ref_number}",
@@ -215,16 +226,21 @@ def run_extraction() -> list[dict]:
     save_tracking(db)
     completed = sum(1 for r in results if r.get("status") == "ok")
     failed    = sum(1 for r in results if r.get("status") == "error")
-    _emit(events.EXTRACT_DONE, {"completed": completed, "failed": failed, "total": total})
+    done_payload = {"completed": completed, "failed": failed, "total": total}
+    if _cancel.is_set():
+        done_payload["cancelled"] = True
+    _emit(events.EXTRACT_DONE, done_payload)
     return results
 
 
 def _extract_thread():
     _status["running"] = True
+    _cancel.clear()
     try:
-        run_extraction()
+        _status["last"] = run_extraction()
     finally:
         _status["running"] = False
+        _cancel.clear()
 
 
 # ── REST endpoints ────────────────────────────────────────────────────────────
@@ -238,8 +254,23 @@ def extract_run():
     return {"status": "started"}
 
 
+@router.post("/cancel")
+def extract_cancel():
+    """Request cancellation of an in-progress extraction."""
+    if not _status["running"]:
+        return {"status": "not_running"}
+    _cancel.set()
+    return {"status": "cancelling"}
+
+
+@router.get("/status")
+def extract_status():
+    return {"running": _status["running"], "last": _status["last"]}
+
+
 @router.get("/results")
 def extract_results():
     """Return current tracking DB with full file details."""
     from scanner import scan_files
     return scan_files()
+

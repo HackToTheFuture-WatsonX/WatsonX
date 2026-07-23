@@ -10,7 +10,12 @@ import urllib.parse as _urlparse
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
-from config import read_config, extracted_folder, ai_json_dir, _data_dir
+import activity
+from config import (
+    read_config, read_config_safe, write_config,
+    extracted_folder, ai_json_dir, _data_dir,
+    bee_prompt_text,
+)
 from tracking import load_tracking
 from insights import get_log_history
 
@@ -406,19 +411,6 @@ def _ica_send_and_stream(where: str, *, cookie, team_id, team_name, chat_id,
 # ── ICA chat ──────────────────────────────────────────────────────────────────
 
 
-_AI_SYSTEM_PROMPT = (
-    "You are Detective Conan, an AI assistant for the Background Check Report Automation system. "
-    "You help HR staff manage background check reports processed through IBM Box.\n\n"
-    "CRITICAL RULES:\n"
-    "1. YOUR ONLY SOURCE OF TRUTH IS THE EXTRACTED RECORDS provided in this conversation.\n"
-    "2. NEVER invent, fabricate, or hallucinate any background check report data.\n"
-    "3. If no extracted record is in context, reply: "
-    "'I can only answer from our extracted records. Please use look up [name or reference] first.'\n"
-    "4. Never simulate a lookup process or produce fake progress messages.\n"
-    "5. Never produce a formatted CONFIDENTIAL BACKGROUND CHECK REPORT unless exact data was provided.\n"
-    "Be professional, concise, and helpful."
-)
-
 _HALLUCINATION_PATTERNS = [
     r"looking\s+up\s+['\"]?.+['\"]?[\s\.]*\.\.",
     r"found\s+\d+\s+match", r"searching\s+for\s+.+\.{2,}",
@@ -485,6 +477,7 @@ def test_box_stream():
     try:
         from box_client import get_box_client
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Box client module failed to load: {exc}", level="error")
         yield {"step": "Could not load Box client module.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -493,6 +486,7 @@ def test_box_stream():
     try:
         client, cfg = get_box_client()
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Box authentication failed: {exc}", level="error")
         yield {"step": "Box authentication failed.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -503,6 +497,7 @@ def test_box_stream():
         user = client.user().get()
         user_login = getattr(user, "login", getattr(user, "name", "unknown"))
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST", f"Could not fetch Box user: {exc}", level="error")
         yield {"step": "Could not fetch Box user.", "state": "error",
                "error": str(exc)[:300]}
         return
@@ -514,11 +509,17 @@ def test_box_stream():
         folder = client.folder(folder_id).get()
         folder_name = getattr(folder, "name", folder_id)
     except Exception as exc:  # noqa: BLE001
+        activity.write("BOX-TEST",
+                       f"Could not open configured folder (id {folder_id}): {exc}",
+                       level="error")
         yield {"step": "Could not open the configured folder.", "state": "error",
                "error": str(exc)[:300]}
         return
     yield {"step": f'Folder "{folder_name}" reachable ✓', "state": "ok"}
 
+    activity.write("BOX-TEST",
+                   f"Box connection OK — user={user_login}, folder={folder_name!r}.",
+                   level="info")
     yield {"step": "Box connection is working.", "state": "done",
            "detail": f'Connected as {user_login} · folder "{folder_name}"'}
 
@@ -548,13 +549,16 @@ def test_ica_stream():
     if not team_id: missing.append("team ID")
     if not chat_id: missing.append("chat ID")
     if missing:
+        activity.write("ICA-TEST",
+                       f"ICA test aborted — missing credentials: {', '.join(missing)}.",
+                       level="warning")
         yield {"step": f"Missing ICA credentials: {', '.join(missing)}.",
                "state": "error",
                "error": f"ICA not configured — missing {', '.join(missing)}."}
         return
     yield {"step": "Credentials present (cookie, team ID, chat ID) ✓", "state": "ok"}
 
-    prompt = "ping — connection test"
+    prompt = "Hi Bee"
     request_summary = (
         f"POST {base_url}/chats/{chat_id}/entries\n"
         f"Headers: teamid={team_id or '(none)'}, "
@@ -572,17 +576,121 @@ def test_ica_stream():
             prompt=prompt, timeout=120,
         )
     except RuntimeError as exc:
+        activity.write("ICA-TEST", f"ICA test failed: {exc}", level="error")
         yield {"step": "ICA request failed.", "state": "error",
                "error": str(exc)[:300]}
         return
     except Exception as exc:  # noqa: BLE001
+        activity.write("ICA-TEST", f"ICA unreachable: {exc}", level="error")
         yield {"step": "Could not reach ICA.", "state": "error",
                "error": str(exc)[:300]}
         return
     yield {"step": "Reply received from ICA ✓", "state": "ok"}
+    activity.write("ICA-TEST",
+                   f'ICA test OK — prompt="{prompt}", reply preview: {(reply or "(empty)")[:200]}',
+                   level="info")
     yield {"step": "ICA connection is working.", "state": "done",
            "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
+
+def initialize_ica_system_prompt():
+    """Yield step-by-step progress while priming the ICA chat with bee_prompt.md.
+
+    Sends the Bee system prompt as the first PROMPT to the currently configured
+    chat_id. On success, records that chat_id in config.ica.system_prompt_chat_id
+    so the UI can show "primed" and later runs can skip re-priming.
+    """
+    yield {"step": "Loading bee_prompt.md…", "state": "run"}
+    prompt = bee_prompt_text()
+    if not prompt:
+        activity.write("ICA-INIT",
+                       "ICA initialization aborted — bee_prompt.md missing or empty.",
+                       level="error")
+        yield {"step": "Could not load bee_prompt.md.", "state": "error",
+               "error": "bee_prompt.md is missing or empty. "
+                        "Expected at backend/prompt/bee_prompt.md."}
+        return
+    yield {"step": f"Loaded bee_prompt.md ({len(prompt)} chars) ✓", "state": "ok"}
+
+    yield {"step": "Reading ICA configuration…", "state": "run"}
+    cfg       = read_config_safe()
+    ic        = cfg.get("ica", {})
+    cookie    = (ic.get("full_cookie", "") or "").strip()
+    team_id   = ic.get("team_id", "")
+    team_name = ic.get("team_name", "")
+    chat_id   = ic.get("chat_id", "")
+    base_url  = ic.get(
+        "base_url",
+        "https://servicesessentials.ibm.com/curatorai/services/chat/new-chat",
+    ).rstrip("/")
+
+    missing = []
+    if not cookie:  missing.append("session cookie")
+    if not team_id: missing.append("team ID")
+    if not chat_id: missing.append("chat ID")
+    if missing:
+        activity.write("ICA-INIT",
+                       f"ICA initialization aborted — missing credentials: {', '.join(missing)}.",
+                       level="warning")
+        yield {"step": f"Missing ICA credentials: {', '.join(missing)}.",
+               "state": "error",
+               "error": f"ICA not configured — missing {', '.join(missing)}."}
+        return
+    yield {"step": "Credentials present (cookie, team ID, chat ID) ✓", "state": "ok"}
+
+    request_summary = (
+        f"POST {base_url}/chats/{chat_id}/entries\n"
+        f"Headers: teamid={team_id or '(none)'}, "
+        f"teamname={team_name or '(none)'}, "
+        f"cookie={_redact_cookie(cookie)}\n"
+        f"Body: type=PROMPT then ANSWER trigger, prompt=bee_prompt.md ({len(prompt)} chars)"
+    )
+    yield {"step": "Preparing request to ICA…", "state": "ok",
+           "detail": request_summary}
+    yield {"step": "Sending Bee system prompt to ICA…", "state": "run"}
+    try:
+        reply = _ica_send_and_stream(
+            "initialize_ica_system_prompt", cookie=cookie, team_id=team_id,
+            team_name=team_name, chat_id=chat_id, base_url=base_url,
+            prompt=prompt, timeout=180,
+        )
+    except RuntimeError as exc:
+        activity.write("ICA-INIT", f"ICA priming failed: {exc}", level="error")
+        yield {"step": "ICA priming request failed.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    except Exception as exc:  # noqa: BLE001
+        activity.write("ICA-INIT", f"ICA unreachable during init: {exc}", level="error")
+        yield {"step": "Could not reach ICA.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    yield {"step": "Bee prompt accepted by ICA ✓", "state": "ok"}
+
+    # Record which chat_id we primed so the UI can show "primed" state and skip
+    # re-priming next time. Re-read config to avoid clobbering concurrent edits.
+    try:
+        latest = read_config_safe()
+        latest.setdefault("ica", {})["system_prompt_chat_id"] = chat_id
+        write_config(latest)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Could not persist system_prompt_chat_id: %s", exc)
+        activity.write("ICA-INIT",
+                       f"ICA primed but persisting system_prompt_chat_id failed: {exc}",
+                       level="error")
+        yield {"step": "Prompt sent but could not persist state.", "state": "error",
+               "error": str(exc)[:300]}
+        return
+    yield {"step": f"Marked chat_id {chat_id[:8]}… as primed ✓", "state": "ok"}
+
+    activity.write(
+        "ICA-INIT",
+        f"ICA initialized — chat_id={chat_id[:8]}…, "
+        f"prompt=bee_prompt.md ({len(prompt)} chars), "
+        f"reply preview: {(reply or '(empty)')[:200]}",
+        level="info",
+    )
+    yield {"step": "ICA system prompt initialized.", "state": "done",
+           "detail": f"Reply: {(reply or '(empty)')[:120]}"}
 
 
 
@@ -631,15 +739,33 @@ def trigger_extraction_for_chat() -> str:
         return f"⚠ Extraction failed: {str(exc)[:300]}"
 
 
+def _kw_match(lower: str, *keywords: str) -> bool:
+    """Word-boundary match for single words; substring for multi-word phrases.
+
+    Plain substring matching wrongly fired the extract pipeline on words like
+    "extracted"/"extraction" (and similarly for "scan"/"sync" appearing inside
+    other words). Single-word keywords are matched on word boundaries; multi-word
+    phrases keep substring matching.
+    """
+    for kw in keywords:
+        if " " in kw:
+            if kw in lower:
+                return True
+        else:
+            if _re_ai.search(r"\b" + _re_ai.escape(kw) + r"\b", lower):
+                return True
+    return False
+
+
 def route_chat_message(message: str, history: list[dict]) -> str:
     history = _sanitize_history(history)
     lower   = message.lower()
 
-    if any(kw in lower for kw in ("sync folder","sync now","sync box","sync","synchronise","synchronize")):
+    if _kw_match(lower, "sync folder","sync now","sync box","synchronise","synchronize","sync"):
         return trigger_sync_for_chat()
-    if any(kw in lower for kw in ("scan box","scan folder","check box","scan","rescan")):
+    if _kw_match(lower, "scan box","scan folder","check box","rescan","scan"):
         return trigger_scan_for_chat()
-    if any(kw in lower for kw in ("run extract","start extract","extract now","extract files","extract","process files")):
+    if _kw_match(lower, "run extract","start extract","extract now","extract files","run pipeline","process files","process reports","extract"):
         return trigger_extraction_for_chat()
     if any(kw in lower for kw in ("file status","how many files","pending files","files pending","files completed","file count")):
         db = load_tracking(); files = db.get("files", {})
@@ -720,7 +846,7 @@ def route_chat_message(message: str, history: list[dict]) -> str:
             return f"⚠ ICA error: {str(exc)[:200]}"
 
     return (
-        "Hi! I'm Detective Conan. I can help with:\n"
+        "Hi! I'm Bee. I can help with:\n"
         "• 'look up [name]'     — search extracted reports\n"
         "• 'sync'               — sync Box → Local Folder\n"
         "• 'extract'            — run extraction pipeline\n"

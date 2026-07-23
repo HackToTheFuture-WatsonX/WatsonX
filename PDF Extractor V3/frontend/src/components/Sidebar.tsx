@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Home, FolderSearch, RefreshCw, Cog, Eye,
-  BarChart2, MessageSquare, SlidersHorizontal,
-  Sun, Moon, PanelLeftClose, PanelLeftOpen,
+  BarChart2, ScrollText, MessageSquare, SlidersHorizontal,
+  ClipboardCheck, Sun, Moon, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useThemeStore } from '../store/theme'
 import { useChatStore } from '../store/chat'
@@ -16,6 +16,8 @@ const NAV = [
   { to: '/extract',  icon: Cog,          label: 'Extract Files' },
   { to: '/view',     icon: Eye,          label: 'View Extracted Files' },
   { to: '/insights', icon: BarChart2,    label: 'Insights' },
+  { to: '/audit',    icon: ClipboardCheck, label: 'Audit Resource' },
+  { to: '/logs',     icon: ScrollText,   label: 'Activity Logs' },
 ]
 
 const SYSTEM = [
@@ -94,8 +96,7 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
-            <div className="text-white font-bold text-sm leading-tight">BG Check</div>
-            <div className="text-accent2 text-xs">Automation  V3</div>
+            <div className="text-white font-bold text-sm leading-tight">Clear Check</div>
           </div>
         )}
       </div>

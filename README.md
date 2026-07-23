@@ -57,7 +57,7 @@ graph TD
 | **HR / Operations staff** | Sync from Box, scan folder, run extraction, view results |
 | **Managers / Stakeholders** | Check Insights dashboard for completion stats |
 | **Compliance reviewers** | Open Word or Excel exports directly from the View page |
-| **Power users** | Chat with Detective Conan to look up report details conversationally |
+| **Power users** | Chat with Bee to look up report details conversationally |
 
 ---
 
@@ -124,7 +124,7 @@ See the **[User Guide](user-guide.md)** for full step-by-step instructions. Summ
 5. **Extract** → run the extraction pipeline; outputs saved as Word, Excel, JSON
 6. **View** → browse and open extracted files
 7. **Insights** → check completion stats and charts
-8. **Chat** → ask Detective Conan about any report
+8. **Chat** → ask Bee about any report
 
 ---
 

@@ -1,19 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
-import { Cog, CheckCircle, XCircle } from 'lucide-react'
+import { Cog, CheckCircle, XCircle, X } from 'lucide-react'
 import Button      from '../components/ui/Button'
 import Spinner     from '../components/ui/Spinner'
 import EmptyState  from '../components/ui/EmptyState'
 import { useApi }  from '../hooks/useApi'
-import { useSocketEvent } from '../hooks/useSocket'
-import type { ScanResult, ExtractResult } from '../types'
+import { useRunStore } from '../store/run'
+import type { ScanResult } from '../types'
 
 export default function Extract() {
-  const { get, post, loading } = useApi()
-  const [fileData,  setFileData]  = useState<ScanResult | null>(null)
-  const [running,   setRunning]   = useState(false)
-  const [progress,  setProgress]  = useState(0)
-  const [results,   setResults]   = useState<ExtractResult[]>([])
-  const [summary,   setSummary]   = useState<{ completed: number; failed: number; total: number } | null>(null)
+  const { get } = useApi()
+  const [fileData, setFileData] = useState<ScanResult | null>(null)
+
+  const running       = useRunStore((s) => s.extractRunning)
+  const progress      = useRunStore((s) => s.extractProgress)
+  const results       = useRunStore((s) => s.extractResults)
+  const summary       = useRunStore((s) => s.extractSummary)
+  const startExtract  = useRunStore((s) => s.startExtract)
+  const cancelExtract = useRunStore((s) => s.cancelExtract)
+  const prevRunning   = useRef(running)
   const listRef = useRef<HTMLDivElement>(null)
 
   async function loadFiles() {
@@ -23,23 +27,17 @@ export default function Extract() {
 
   useEffect(() => { loadFiles() }, [])
 
-  useSocketEvent<{ percent: number; name: string }>('extract:progress', (d) => {
-    setProgress(d.percent)
-  })
+  // Reload pending/completed counts whenever an extraction finishes.
+  useEffect(() => {
+    if (prevRunning.current && !running) loadFiles()
+    prevRunning.current = running
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running])
 
-  useSocketEvent<ExtractResult>('extract:result', (d) => {
-    setResults(prev => [...prev, d])
-    setTimeout(() => listRef.current?.scrollTo({ top: 999999, behavior: 'smooth' }), 30)
-  })
-
-  useSocketEvent<{ completed: number; failed: number; total: number }>('extract:done', (d) => {
-    setRunning(false); setSummary(d); loadFiles()
-  })
-
-  async function handleExtract() {
-    setRunning(true); setResults([]); setSummary(null); setProgress(0)
-    await post('/api/extract/run')
-  }
+  // Auto-scroll to newest result card.
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 999999, behavior: 'smooth' })
+  }, [results])
 
   return (
     <div className="p-7 max-w-4xl">
@@ -49,10 +47,18 @@ export default function Extract() {
           <h1 className="page-title">Extract Files</h1>
           <p className="page-sub mt-0.5">Run extraction pipeline — decrypt, parse, export Word / Excel / JSON</p>
         </div>
-        <Button variant="green" onClick={handleExtract} disabled={running || loading}>
-          {running ? <Spinner size={14} /> : <Cog size={14} />}
-          {running ? 'Extracting…' : 'Start Extraction'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="green" onClick={startExtract} disabled={running}>
+            {running ? <Spinner size={14} /> : <Cog size={14} />}
+            {running ? 'Extracting…' : 'Start Extraction'}
+          </Button>
+          {running && (
+            <Button variant="danger" onClick={cancelExtract}>
+              <X size={14} />
+              Cancel
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Pending summary */}
